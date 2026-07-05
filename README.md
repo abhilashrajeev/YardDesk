@@ -55,7 +55,10 @@ npm run start:dev             # API on http://localhost:3000
 - [x] Backend: sales + billing + gate/loading passes + inventory OUT — tested live
 - [x] Backend: payments + ledgers + credit/outstanding — tested live
 - [x] Backend: offline idempotency (clientUuid) on sales/purchases/payments — tested live
-- [ ] Backend: day-close + reports/analytics + payment reminders
+- [x] Backend: day-close (per-material opening/in/out/closing, locked) — tested live
+- [x] Backend: reports/analytics (daily, summary, material breakdown, day/month series) — tested live
+- [x] Backend: in-app payment reminders + daily IST cron — tested live
+- [ ] **Backend feature-complete** — next: web app
 - [ ] Web app
 - [ ] Mobile app + offline sync
 
