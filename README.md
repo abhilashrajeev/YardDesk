@@ -58,9 +58,19 @@ npm run start:dev             # API on http://localhost:3000
 - [x] Backend: day-close (per-material opening/in/out/closing, locked) — tested live
 - [x] Backend: reports/analytics (daily, summary, material breakdown, day/month series) — tested live
 - [x] Backend: in-app payment reminders + daily IST cron — tested live
-- [ ] **Backend feature-complete** — next: web app
-- [ ] Web app
+- [x] **Backend feature-complete**
+- [x] Web admin app (React + Vite): login, dashboard, sales, purchases, payments,
+      stock, customers/vendors + ledgers, materials, day-close, reports, notifications — verified in browser
 - [ ] Mobile app + offline sync
+
+### Web app
+```bash
+cd web
+cp .env.example .env    # optional; defaults to http://localhost:3000/api
+npm install
+npm run dev             # http://localhost:5173
+```
+Both servers are registered in `.claude/launch.json` (backend + web).
 
 ### Quick start (already set up)
 ```bash

@@ -1,0 +1,132 @@
+import { useState } from 'react';
+import { api, apiError } from '../api/client';
+import { useFetch, money, fmtDate } from '../lib/hooks';
+import type { Customer } from '../types';
+
+interface LedgerEntry {
+  id: string;
+  date: string;
+  description: string;
+  debit: string;
+  credit: string;
+  balance: string;
+}
+
+export default function Customers() {
+  const { data: customers, refetch } = useFetch<Customer[]>('/customers');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [creditLimit, setCreditLimit] = useState(0);
+  const [error, setError] = useState('');
+  const [ledgerFor, setLedgerFor] = useState<Customer | null>(null);
+  const { data: ledger } = useFetch<{ balance: number; entries: LedgerEntry[] }>(
+    ledgerFor ? `/accounts/customers/${ledgerFor.id}/ledger` : null,
+  );
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    try {
+      await api.post('/customers', { name, phone: phone || undefined, creditLimit: Number(creditLimit) });
+      setName('');
+      setPhone('');
+      setCreditLimit(0);
+      refetch();
+    } catch (err) {
+      setError(apiError(err));
+    }
+  }
+
+  return (
+    <>
+      <h2 style={{ marginTop: 0 }}>Customers</h2>
+      <form className="panel" onSubmit={add}>
+        <h2>Add Customer</h2>
+        <div className="body">
+          <div className="row">
+            <div>
+              <label>Name</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+            <div>
+              <label>Phone</label>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </div>
+            <div>
+              <label>Credit limit</label>
+              <input type="number" value={creditLimit || ''} onChange={(e) => setCreditLimit(Number(e.target.value))} />
+            </div>
+          </div>
+          {error && <div className="err">{error}</div>}
+          <button className="btn">Add</button>
+        </div>
+      </form>
+
+      <div className="panel">
+        <h2>All Customers</h2>
+        <div className="body" style={{ padding: 0 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th className="num">Credit limit</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {customers?.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.name}</td>
+                  <td className="muted">{c.phone ?? '—'}</td>
+                  <td className="num">{money(c.creditLimit)}</td>
+                  <td className="right">
+                    <button className="btn sm ghost" onClick={() => setLedgerFor(c)}>Ledger</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {ledgerFor && (
+        <div className="panel">
+          <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+            <strong>{ledgerFor.name} — Ledger</strong>
+            <span>
+              Balance:{' '}
+              <strong style={{ color: (ledger?.balance ?? 0) > 0 ? 'var(--red)' : 'var(--green)' }}>
+                {money(ledger?.balance)}
+              </strong>
+            </span>
+          </div>
+          <div className="body" style={{ padding: 0 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th className="num">Debit</th>
+                  <th className="num">Credit</th>
+                  <th className="num">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ledger?.entries.map((e) => (
+                  <tr key={e.id}>
+                    <td>{fmtDate(e.date)}</td>
+                    <td>{e.description}</td>
+                    <td className="num">{Number(e.debit) ? money(e.debit) : '—'}</td>
+                    <td className="num">{Number(e.credit) ? money(e.credit) : '—'}</td>
+                    <td className="num">{money(e.balance)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

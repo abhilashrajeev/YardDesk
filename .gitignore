@@ -8,6 +8,7 @@ build/
 .next/
 web/dist/
 backend/dist/
+*.tsbuildinfo
 
 # env & secrets
 .env
