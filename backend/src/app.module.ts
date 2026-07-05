@@ -8,6 +8,10 @@ import { MaterialsModule } from './materials/materials.module';
 import { CustomersModule } from './customers/customers.module';
 import { VendorsModule } from './vendors/vendors.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
+import { InventoryModule } from './inventory/inventory.module';
+import { AccountsModule } from './accounts/accounts.module';
+import { PurchasesModule } from './purchases/purchases.module';
+import { SalesModule } from './sales/sales.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -19,6 +23,10 @@ import { HealthController } from './health.controller';
     CustomersModule,
     VendorsModule,
     VehiclesModule,
+    InventoryModule,
+    AccountsModule,
+    PurchasesModule,
+    SalesModule,
   ],
   controllers: [HealthController],
   providers: [

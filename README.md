@@ -51,9 +51,10 @@ npm run start:dev             # API on http://localhost:3000
 - [x] Repo scaffold + full database schema (migrated to Neon)
 - [x] Backend: auth + RBAC (JWT login, role guards) — tested live
 - [x] Backend: master data (materials, customers, vendors, vehicles) — tested live
-- [ ] Backend: purchases + inventory IN
-- [ ] Backend: sales + billing + gate/loading passes + inventory OUT
-- [ ] Backend: payments + ledgers + credit/outstanding
+- [x] Backend: purchases + inventory IN — tested live
+- [x] Backend: sales + billing + gate/loading passes + inventory OUT — tested live
+- [x] Backend: payments + ledgers + credit/outstanding — tested live
+- [x] Backend: offline idempotency (clientUuid) on sales/purchases/payments — tested live
 - [ ] Backend: day-close + reports/analytics + payment reminders
 - [ ] Web app
 - [ ] Mobile app + offline sync
