@@ -1,0 +1,391 @@
+// Yard ERP — data model
+// Construction materials yard (single yard, India, no GST).
+// DB-agnostic via DATABASE_URL (Neon / local Postgres / Docker all work).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  EMPLOYEE
+}
+
+enum Unit {
+  CFT // cubic feet — sand, metal, GSP, dust
+  BAG // cement
+  NOS // bricks / count
+}
+
+enum PartyType {
+  CUSTOMER
+  VENDOR
+}
+
+enum PaymentDirection {
+  IN // received from customer
+  OUT // paid to vendor
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  BANK
+  CREDIT // no cash moved; adjusts ledger
+}
+
+enum TxnStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+enum StockDirection {
+  IN
+  OUT
+  ADJUST
+}
+
+enum NotificationType {
+  PAYMENT_REMINDER
+  LOW_STOCK
+  GENERAL
+}
+
+// ---------------------------------------------------------------------------
+// Users & auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  phone        String   @unique
+  email        String?  @unique
+  passwordHash String
+  role         Role     @default(EMPLOYEE)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  purchases     Purchase[]
+  sales         Sale[]
+  payments      Payment[]
+  gatePasses    GatePass[]
+  loadingPasses LoadingPass[]
+  dayCloses     DayClose[]
+  notifications Notification[]
+}
+
+// ---------------------------------------------------------------------------
+// Master data
+// ---------------------------------------------------------------------------
+
+model Material {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  code         String?  @unique
+  unit         Unit
+  // Live inventory balance in the material's unit.
+  currentStock Decimal  @default(0) @db.Decimal(14, 3)
+  // Default selling rate (per unit); overridable per sale line.
+  defaultRate  Decimal? @db.Decimal(12, 2)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  purchaseItems PurchaseItem[]
+  saleItems     SaleItem[]
+  stockMovements StockMovement[]
+  dayCloses     DayClose[]
+}
+
+model Customer {
+  id             String   @id @default(cuid())
+  name           String
+  phone          String?
+  address        String?
+  creditLimit    Decimal  @default(0) @db.Decimal(14, 2)
+  openingBalance Decimal  @default(0) @db.Decimal(14, 2) // positive = customer owes us
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  sales    Sale[]
+  payments Payment[]
+  ledger   LedgerEntry[]
+
+  @@index([name])
+}
+
+model Vendor {
+  id             String   @id @default(cuid())
+  name           String
+  phone          String?
+  address        String?
+  openingBalance Decimal  @default(0) @db.Decimal(14, 2) // positive = we owe vendor
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  purchases Purchase[]
+  payments  Payment[]
+  ledger    LedgerEntry[]
+
+  @@index([name])
+}
+
+model Vehicle {
+  id          String   @id @default(cuid())
+  number      String   @unique // registration no.
+  type        String? // tipper / lorry / 6-wheeler etc.
+  driverName  String?
+  driverPhone String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  purchases Purchase[]
+  sales     Sale[]
+}
+
+// ---------------------------------------------------------------------------
+// Purchases (stock IN)
+// ---------------------------------------------------------------------------
+
+model Purchase {
+  id         String    @id @default(cuid())
+  // Offline-sync idempotency key generated on the client.
+  clientUuid String?   @unique
+  invoiceNo  String? // vendor's bill/DC number
+  date       DateTime  @default(now())
+  vendorId   String
+  vendor     Vendor    @relation(fields: [vendorId], references: [id])
+  vehicleId  String?
+  vehicle    Vehicle?  @relation(fields: [vehicleId], references: [id])
+  freight    Decimal   @default(0) @db.Decimal(12, 2)
+  subTotal   Decimal   @default(0) @db.Decimal(14, 2)
+  total      Decimal   @default(0) @db.Decimal(14, 2)
+  status     TxnStatus @default(CONFIRMED)
+  notes      String?
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  items    PurchaseItem[]
+  payments Payment[]
+
+  @@index([date])
+  @@index([vendorId])
+}
+
+model PurchaseItem {
+  id         String   @id @default(cuid())
+  purchaseId String
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+  quantity   Decimal  @db.Decimal(14, 3)
+  rate       Decimal  @db.Decimal(12, 2)
+  amount     Decimal  @db.Decimal(14, 2)
+}
+
+// ---------------------------------------------------------------------------
+// Sales & billing (stock OUT)
+// ---------------------------------------------------------------------------
+
+model Sale {
+  id          String      @id @default(cuid())
+  clientUuid  String?     @unique
+  billNo      String?     @unique // sequential bill number
+  date        DateTime    @default(now())
+  customerId  String
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  vehicleId   String?
+  vehicle     Vehicle?    @relation(fields: [vehicleId], references: [id])
+  freight     Decimal     @default(0) @db.Decimal(12, 2)
+  subTotal    Decimal     @default(0) @db.Decimal(14, 2)
+  discount    Decimal     @default(0) @db.Decimal(12, 2)
+  total       Decimal     @default(0) @db.Decimal(14, 2)
+  paymentMode PaymentMode @default(CASH)
+  status      TxnStatus   @default(CONFIRMED)
+  notes       String?
+  createdById String
+  createdBy   User        @relation(fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  items        SaleItem[]
+  payments     Payment[]
+  gatePass     GatePass?
+  loadingPass  LoadingPass?
+
+  @@index([date])
+  @@index([customerId])
+}
+
+model SaleItem {
+  id         String   @id @default(cuid())
+  saleId     String
+  sale       Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+  quantity   Decimal  @db.Decimal(14, 3)
+  rate       Decimal  @db.Decimal(12, 2)
+  amount     Decimal  @db.Decimal(14, 2)
+}
+
+// ---------------------------------------------------------------------------
+// Gate pass / Loading pass
+// ---------------------------------------------------------------------------
+
+model GatePass {
+  id         String   @id @default(cuid())
+  clientUuid String?  @unique
+  passNo     String?  @unique
+  saleId     String   @unique
+  sale       Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  issuedById String
+  issuedBy   User     @relation(fields: [issuedById], references: [id])
+  issuedAt   DateTime @default(now())
+  gateOutAt  DateTime?
+  notes      String?
+}
+
+model LoadingPass {
+  id         String   @id @default(cuid())
+  clientUuid String?  @unique
+  passNo     String?  @unique
+  saleId     String   @unique
+  sale       Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  loadedById String
+  loadedBy   User     @relation(fields: [loadedById], references: [id])
+  loadedAt   DateTime @default(now())
+  notes      String?
+}
+
+// ---------------------------------------------------------------------------
+// Payments, ledgers, credit
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id         String           @id @default(cuid())
+  clientUuid String?          @unique
+  date       DateTime         @default(now())
+  direction  PaymentDirection
+  mode       PaymentMode
+  amount     Decimal          @db.Decimal(14, 2)
+  reference  String? // UPI ref / cheque no. etc.
+  notes      String?
+
+  partyType  PartyType
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  vendorId   String?
+  vendor     Vendor?   @relation(fields: [vendorId], references: [id])
+
+  // Optional allocation against a specific transaction.
+  saleId     String?
+  sale       Sale?     @relation(fields: [saleId], references: [id])
+  purchaseId String?
+  purchase   Purchase? @relation(fields: [purchaseId], references: [id])
+
+  createdById String
+  createdBy   User    @relation(fields: [createdById], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@index([date])
+  @@index([customerId])
+  @@index([vendorId])
+}
+
+// Running ledger for customers/vendors. debit/credit per event.
+model LedgerEntry {
+  id          String    @id @default(cuid())
+  date        DateTime  @default(now())
+  partyType   PartyType
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  vendorId    String?
+  vendor      Vendor?   @relation(fields: [vendorId], references: [id])
+  description String
+  debit       Decimal   @default(0) @db.Decimal(14, 2)
+  credit      Decimal   @default(0) @db.Decimal(14, 2)
+  balance     Decimal   @db.Decimal(14, 2) // running balance after this entry
+  refType     String? // "SALE" | "PURCHASE" | "PAYMENT"
+  refId       String?
+  createdAt   DateTime  @default(now())
+
+  @@index([customerId])
+  @@index([vendorId])
+  @@index([date])
+}
+
+// ---------------------------------------------------------------------------
+// Inventory movements & day close
+// ---------------------------------------------------------------------------
+
+model StockMovement {
+  id         String         @id @default(cuid())
+  date       DateTime       @default(now())
+  materialId String
+  material   Material       @relation(fields: [materialId], references: [id])
+  direction  StockDirection
+  quantity   Decimal        @db.Decimal(14, 3)
+  balance    Decimal        @db.Decimal(14, 3) // stock after this movement
+  refType    String? // "PURCHASE" | "SALE" | "ADJUSTMENT"
+  refId      String?
+  notes      String?
+  createdAt  DateTime       @default(now())
+
+  @@index([materialId])
+  @@index([date])
+}
+
+// One locked snapshot per material per business day.
+model DayClose {
+  id           String   @id @default(cuid())
+  businessDate DateTime @db.Date
+  materialId   String
+  material     Material @relation(fields: [materialId], references: [id])
+  opening      Decimal  @db.Decimal(14, 3)
+  totalIn      Decimal  @db.Decimal(14, 3)
+  totalOut     Decimal  @db.Decimal(14, 3)
+  closing      Decimal  @db.Decimal(14, 3)
+  closedById   String
+  closedBy     User     @relation(fields: [closedById], references: [id])
+  closedAt     DateTime @default(now())
+
+  @@unique([businessDate, materialId])
+  @@index([businessDate])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications (in-app: payment reminders, low stock)
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id])
+  type      NotificationType
+  title     String
+  body      String?
+  refType   String?
+  refId     String?
+  isRead    Boolean          @default(false)
+  dueDate   DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, isRead])
+}
