@@ -61,7 +61,19 @@ npm run start:dev             # API on http://localhost:3000
 - [x] **Backend feature-complete**
 - [x] Web admin app (React + Vite): login, dashboard, sales, purchases, payments,
       stock, customers/vendors + ledgers, materials, day-close, reports, notifications — verified in browser
-- [ ] Mobile app + offline sync
+- [x] Mobile app (Expo) + offline sync — login, home/sync, sale (+ gate/loading pass), purchase, payment; bundles clean
+- [ ] Physical-device / emulator run (needs your device via Expo Go)
+
+### Mobile app (Expo)
+```bash
+cd mobile
+npm install
+# In app.json > expo.extra.apiUrl set your machine's LAN IP for a physical device,
+# e.g. http://192.168.1.5:3000/api  (default 10.0.2.2 works for the Android emulator).
+npm start        # scan the QR with Expo Go, or press a for Android emulator
+```
+Offline-first: sales/purchases/payments/passes are queued locally (each with a
+clientUuid) and synced to the backend when online; the backend dedupes replays.
 
 ### Web app
 ```bash

@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Yard ERP",
+    "slug": "yard-erp-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "yarderp",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#1e293b"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true },
+    "android": {
+      "package": "com.yarderp.mobile"
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "extra": {
+      "apiUrl": "http://10.0.2.2:3000/api"
+    }
+  }
+}
