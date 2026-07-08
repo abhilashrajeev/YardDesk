@@ -58,7 +58,15 @@ export class StockService {
     return this.prisma.material.findMany({
       where: { isActive: true },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, unit: true, currentStock: true },
+      select: {
+        id: true,
+        name: true,
+        unit: true,
+        currentStock: true,
+        defaultRate: true,
+        purchaseRate: true,
+        purchaseRateTon: true,
+      },
     });
   }
 

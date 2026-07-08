@@ -61,6 +61,9 @@ npm run start:dev             # API on http://localhost:3000
 - [x] **Backend feature-complete**
 - [x] Web admin app (React + Vite): login, dashboard, sales, purchases, payments,
       stock, customers/vendors + ledgers, materials, day-close, reports, notifications — verified in browser
+- [x] Devi Traders branding (red/navy/gold), Outstanding & Pending page, sale/purchase
+      detail views (gate/loading pass issuance), purchase-by-ton↔cft unit conversion
+      (1 ton = 21 cft) — verified end-to-end in browser against the live backend
 - [x] Mobile app (Expo) + offline sync — login, home/sync, sale (+ gate/loading pass), purchase, payment; bundles clean
 - [ ] Physical-device / emulator run (needs your device via Expo Go)
 

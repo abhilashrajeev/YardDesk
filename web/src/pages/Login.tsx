@@ -25,21 +25,29 @@ export default function Login() {
     <div className="login-wrap">
       <div className="login-hero">
         <div className="brand">
-          <div className="brand-mark">Y</div>
+          <div className="brand-mark">D</div>
           <div className="brand-name">
-            Yard<span>ERP</span>
+            Devi Traders
+            <small>Building Materials Supplier</small>
           </div>
         </div>
         <div>
           <h1>
-            Run your yard,
+            Run the yard,
             <br />
-            not your paperwork.
+            not the paperwork.
           </h1>
           <p>
-            Sales, purchases, stock, passes and payments — one place, updated the moment
-            a load leaves the gate.
+            Sales, purchases, stock, gate passes and ledgers — one register, updated the
+            moment a load leaves the gate.
           </p>
+        </div>
+        <div className="bars" aria-hidden="true">
+          <i style={{ height: '34%' }} />
+          <i style={{ height: '52%' }} />
+          <i style={{ height: '71%' }} />
+          <i style={{ height: '100%' }} />
+          <i style={{ height: '80%' }} />
         </div>
         <div className="feats">
           <div className="feat"><span className="dot" /> Real-time stock &amp; day-close</div>
@@ -51,7 +59,7 @@ export default function Login() {
       <div className="login-form-side">
         <form className="login-card" onSubmit={submit}>
           <h2>Welcome back</h2>
-          <p className="lead">Sign in to your yard account</p>
+          <p className="lead">Sign in to Devi Traders</p>
           <div style={{ marginBottom: 14 }}>
             <label>Phone</label>
             <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="9999999999" autoFocus />

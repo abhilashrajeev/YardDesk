@@ -12,7 +12,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PaymentMode } from '@prisma/client';
+import { PaymentMode, Unit } from '@prisma/client';
 
 export class PurchaseItemDto {
   @IsString()
@@ -26,6 +26,12 @@ export class PurchaseItemDto {
   @IsNumber()
   @Min(0)
   rate!: number;
+
+  // Unit this line was actually transacted in (e.g. TON). Defaults to the
+  // material's own unit when omitted — no conversion needed in that case.
+  @IsOptional()
+  @IsEnum(Unit)
+  unit?: Unit;
 }
 
 export class CreatePurchaseDto {

@@ -16,7 +16,11 @@ type IconName =
   | 'up'
   | 'down'
   | 'rupee'
-  | 'plus';
+  | 'plus'
+  | 'clock'
+  | 'x'
+  | 'check'
+  | 'eye';
 
 const paths: Record<IconName, JSX.Element> = {
   grid: (
@@ -116,6 +120,28 @@ const paths: Record<IconName, JSX.Element> = {
   plus: (
     <>
       <path d="M12 5v14M5 12h14" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" />
+    </>
+  ),
+  x: (
+    <>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </>
+  ),
+  check: (
+    <>
+      <path d="M20 6 9 17l-5-5" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
     </>
   ),
 };

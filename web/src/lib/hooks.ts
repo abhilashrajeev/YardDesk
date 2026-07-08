@@ -36,3 +36,7 @@ export const qty = (n: number | string | null | undefined) =>
 
 export const fmtDate = (s: string) =>
   new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+/** CSS pill class for a payment status (PAID / PART_PAID / PENDING / OVERDUE). */
+export const statusPillClass = (status?: string) =>
+  status === 'PAID' ? 'pos' : status === 'OVERDUE' ? 'neg' : 'warn';

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
-import { useFetch, money, fmtDate } from '../lib/hooks';
+import { useFetch, money, fmtDate, statusPillClass } from '../lib/hooks';
 import LineItems from '../components/LineItems';
+import SaleDetail from '../components/SaleDetail';
 import type { Customer, Material, Sale, LineInput, PaymentMode } from '../types';
 
 export default function Sales() {
@@ -9,6 +10,7 @@ export default function Sales() {
   const { data: customers } = useFetch<Customer[]>('/customers');
   const { data: materials } = useFetch<Material[]>('/inventory');
   const [open, setOpen] = useState(false);
+  const [viewId, setViewId] = useState<string | null>(null);
 
   return (
     <>
@@ -41,6 +43,8 @@ export default function Sales() {
                 <th>Customer</th>
                 <th>Mode</th>
                 <th className="num">Total</th>
+                <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -53,17 +57,27 @@ export default function Sales() {
                     <span className={s.paymentMode === 'CREDIT' ? 'pill neg' : 'pill pos'}>{s.paymentMode}</span>
                   </td>
                   <td className="num">{money(s.total)}</td>
+                  <td>
+                    {s.paymentStatus && (
+                      <span className={`pill ${statusPillClass(s.paymentStatus)}`}>{s.paymentStatus}</span>
+                    )}
+                  </td>
+                  <td className="right">
+                    <button className="btn ghost sm" onClick={() => setViewId(s.id)}>View</button>
+                  </td>
                 </tr>
               ))}
               {sales?.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="muted" style={{ padding: 16 }}>No sales yet.</td>
+                  <td colSpan={7} className="muted" style={{ padding: 16 }}>No sales yet.</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {viewId && <SaleDetail id={viewId} onClose={() => setViewId(null)} onChange={refetch} />}
     </>
   );
 }

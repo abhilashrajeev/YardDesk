@@ -10,6 +10,7 @@ const TITLES: Record<string, string> = {
   '/sales': 'Sales & Billing',
   '/purchases': 'Purchases',
   '/payments': 'Payments',
+  '/outstanding': 'Outstanding & Pending',
   '/inventory': 'Stock Monitoring',
   '/customers': 'Customers',
   '/vendors': 'Vendors',
@@ -40,9 +41,10 @@ export default function Layout() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">Y</div>
+          <div className="brand-mark">D</div>
           <div className="brand-name">
-            Yard<span>ERP</span>
+            Devi Traders
+            <small>Yard ERP</small>
           </div>
         </div>
         <nav className="nav">
@@ -59,6 +61,9 @@ export default function Layout() {
           </NavLink>
           <NavLink to="/payments" className={link}>
             <Icon name="wallet" size={18} /> Payments
+          </NavLink>
+          <NavLink to="/outstanding" className={link}>
+            <Icon name="clock" size={18} /> Outstanding
           </NavLink>
           <NavLink to="/inventory" className={link}>
             <Icon name="box" size={18} /> Stock

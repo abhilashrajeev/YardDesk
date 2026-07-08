@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Sales from './pages/Sales';
 import Purchases from './pages/Purchases';
 import Payments from './pages/Payments';
+import Outstanding from './pages/Outstanding';
 import Inventory from './pages/Inventory';
 import Customers from './pages/Customers';
 import Vendors from './pages/Vendors';
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="sales" element={<Sales />} />
         <Route path="purchases" element={<Purchases />} />
         <Route path="payments" element={<Payments />} />
+        <Route path="outstanding" element={<Outstanding />} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="customers" element={<Customers />} />
         <Route path="vendors" element={<Vendors />} />

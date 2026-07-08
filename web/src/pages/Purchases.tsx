@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
-import { useFetch, money, fmtDate } from '../lib/hooks';
-import LineItems from '../components/LineItems';
+import { useFetch, money, fmtDate, statusPillClass } from '../lib/hooks';
+import PurchaseLineItems from '../components/PurchaseLineItems';
+import PurchaseDetail from '../components/PurchaseDetail';
 import type { Vendor, Material, Purchase, LineInput, PaymentMode } from '../types';
 
 export default function Purchases() {
@@ -9,6 +10,7 @@ export default function Purchases() {
   const { data: vendors } = useFetch<Vendor[]>('/vendors');
   const { data: materials } = useFetch<Material[]>('/inventory');
   const [open, setOpen] = useState(false);
+  const [viewId, setViewId] = useState<string | null>(null);
 
   return (
     <>
@@ -40,6 +42,8 @@ export default function Purchases() {
                 <th>Date</th>
                 <th>Vendor</th>
                 <th className="num">Total</th>
+                <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -49,17 +53,27 @@ export default function Purchases() {
                   <td>{fmtDate(p.date)}</td>
                   <td>{p.vendor?.name}</td>
                   <td className="num">{money(p.total)}</td>
+                  <td>
+                    {p.paymentStatus && (
+                      <span className={`pill ${statusPillClass(p.paymentStatus)}`}>{p.paymentStatus}</span>
+                    )}
+                  </td>
+                  <td className="right">
+                    <button className="btn ghost sm" onClick={() => setViewId(p.id)}>View</button>
+                  </td>
                 </tr>
               ))}
               {purchases?.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="muted" style={{ padding: 16 }}>No purchases yet.</td>
+                  <td colSpan={6} className="muted" style={{ padding: 16 }}>No purchases yet.</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {viewId && <PurchaseDetail id={viewId} onClose={() => setViewId(null)} onChange={refetch} />}
     </>
   );
 }
@@ -79,7 +93,7 @@ function NewPurchase({
   const [paidAmount, setPaidAmount] = useState(0);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH');
   const [lines, setLines] = useState<LineInput[]>([
-    { materialId: materials[0]?.id ?? '', quantity: 0, rate: 0 },
+    { materialId: materials[0]?.id ?? '', quantity: 0, rate: Number(materials[0]?.purchaseRate ?? materials[0]?.defaultRate ?? 0), unit: materials[0]?.unit },
   ]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -129,7 +143,7 @@ function NewPurchase({
           </div>
         </div>
 
-        <LineItems materials={materials} lines={lines} onChange={setLines} />
+        <PurchaseLineItems materials={materials} lines={lines} onChange={setLines} />
 
         <div className="row" style={{ marginTop: 14 }}>
           <div>

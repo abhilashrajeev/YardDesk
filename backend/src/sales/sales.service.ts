@@ -13,6 +13,41 @@ import { CreateSaleDto, CreatePassDto } from './dto';
 import { round2 } from '../common/money';
 import { TXN_OPTIONS } from '../common/db';
 
+type SaleStatus = 'PAID' | 'PART_PAID' | 'PENDING' | 'OVERDUE';
+const OVERDUE_AFTER_DAYS = 21;
+
+function daysSince(date: Date): number {
+  return Math.floor((Date.now() - date.getTime()) / 86400000);
+}
+
+/**
+ * Attach computed paidAmount/balance/paymentStatus from a sale's payments.
+ * Cash/UPI/Bank sales always settle at creation. Named `paymentStatus` (not
+ * `status`) to avoid colliding with the Sale model's own `status: TxnStatus`.
+ */
+function withSaleStatus<
+  T extends {
+    total: unknown;
+    paymentMode: PaymentMode;
+    date: Date;
+    payments: { amount: unknown; direction: PaymentDirection }[];
+  },
+>(sale: T): T & { paidAmount: number; balance: number; paymentStatus: SaleStatus } {
+  const total = Number(sale.total);
+  const paid = sale.payments
+    .filter((p) => p.direction === PaymentDirection.IN)
+    .reduce((s, p) => s + Number(p.amount), 0);
+  const balance = round2(total - paid);
+
+  let paymentStatus: SaleStatus;
+  if (sale.paymentMode !== PaymentMode.CREDIT) paymentStatus = 'PAID';
+  else if (paid <= 0) paymentStatus = daysSince(sale.date) > OVERDUE_AFTER_DAYS ? 'OVERDUE' : 'PENDING';
+  else if (paid < total - 0.01) paymentStatus = 'PART_PAID';
+  else paymentStatus = 'PAID';
+
+  return { ...sale, paidAmount: round2(paid), balance, paymentStatus };
+}
+
 @Injectable()
 export class SalesService {
   constructor(
@@ -170,8 +205,8 @@ export class SalesService {
     });
   }
 
-  list(params: { customerId?: string; from?: string; to?: string; limit?: number }) {
-    return this.prisma.sale.findMany({
+  async list(params: { customerId?: string; from?: string; to?: string; limit?: number }) {
+    const sales = await this.prisma.sale.findMany({
       where: {
         ...(params.customerId ? { customerId: params.customerId } : {}),
         ...(params.from || params.to
@@ -185,8 +220,26 @@ export class SalesService {
       },
       orderBy: { date: 'desc' },
       take: params.limit ?? 100,
-      include: { customer: { select: { name: true } }, items: true },
+      include: {
+        customer: { select: { name: true } },
+        items: true,
+        payments: { select: { amount: true, direction: true } },
+      },
     });
+    return sales.map(withSaleStatus);
+  }
+
+  /** Credit bills that aren't fully paid — pending, part-paid, or overdue. */
+  async findOutstanding() {
+    const sales = await this.prisma.sale.findMany({
+      where: { paymentMode: PaymentMode.CREDIT },
+      orderBy: { date: 'desc' },
+      include: {
+        customer: { select: { name: true } },
+        payments: { select: { amount: true, direction: true } },
+      },
+    });
+    return sales.map(withSaleStatus).filter((s) => s.paymentStatus !== 'PAID');
   }
 
   async findOne(id: string) {
@@ -202,6 +255,6 @@ export class SalesService {
       },
     });
     if (!sale) throw new NotFoundException('Sale not found');
-    return sale;
+    return withSaleStatus(sale);
   }
 }

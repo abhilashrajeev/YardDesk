@@ -21,6 +21,12 @@ export class SalesController {
     return this.sales.list({ customerId, from, to });
   }
 
+  // Must be declared before ':id' so it isn't swallowed by that param route.
+  @Get('outstanding')
+  outstanding() {
+    return this.sales.findOutstanding();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.sales.findOne(id);

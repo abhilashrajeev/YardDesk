@@ -25,6 +25,7 @@ enum Unit {
   CFT // cubic feet — sand, metal, GSP, dust
   BAG // cement
   NOS // bricks / count
+  TON // metric ton — aggregates are often purchased by weight, sold by volume
 }
 
 enum PartyType {
@@ -95,10 +96,15 @@ model Material {
   name         String   @unique
   code         String?  @unique
   unit         Unit
-  // Live inventory balance in the material's unit.
+  // Live inventory balance in the material's unit (sales/stock are always in this unit).
   currentStock Decimal  @default(0) @db.Decimal(14, 3)
-  // Default selling rate (per unit); overridable per sale line.
+  // Default selling rate (per sale/stock unit); overridable per sale line.
   defaultRate  Decimal? @db.Decimal(12, 2)
+  // Default purchase rate when buying in the material's own unit; overridable per purchase line.
+  purchaseRate    Decimal? @db.Decimal(12, 2)
+  // Default purchase rate when buying by the ton (only meaningful when unit = CFT).
+  // Presence of this value is what offers "buy by the ton" on the purchase form.
+  purchaseRateTon Decimal? @db.Decimal(12, 2)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -195,6 +201,9 @@ model PurchaseItem {
   purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   materialId String
   material   Material @relation(fields: [materialId], references: [id])
+  // Quantity and rate as actually transacted, in `unit` (e.g. bought by the TON).
+  // Null `unit` means "same as the material's unit" (legacy rows / no conversion needed).
+  unit       Unit?
   quantity   Decimal  @db.Decimal(14, 3)
   rate       Decimal  @db.Decimal(12, 2)
   amount     Decimal  @db.Decimal(14, 2)

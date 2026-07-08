@@ -11,6 +11,36 @@ import { LedgerService } from '../accounts/ledger.service';
 import { CreatePurchaseDto } from './dto';
 import { round2 } from '../common/money';
 import { TXN_OPTIONS } from '../common/db';
+import { convertQty } from '../common/units';
+
+type PurchaseStatus = 'PAID' | 'PART_PAID' | 'PENDING' | 'OVERDUE';
+const OVERDUE_AFTER_DAYS = 21;
+
+function daysSince(date: Date): number {
+  return Math.floor((Date.now() - date.getTime()) / 86400000);
+}
+
+/**
+ * Attach computed paidAmount/balance/paymentStatus from a purchase's payments.
+ * Named `paymentStatus` (not `status`) to avoid colliding with the Purchase
+ * model's own `status: TxnStatus` (confirmed/cancelled).
+ */
+function withPurchaseStatus<
+  T extends { total: unknown; date: Date; payments: { amount: unknown; direction: PaymentDirection }[] },
+>(purchase: T): T & { paidAmount: number; balance: number; paymentStatus: PurchaseStatus } {
+  const total = Number(purchase.total);
+  const paid = purchase.payments
+    .filter((p) => p.direction === PaymentDirection.OUT)
+    .reduce((s, p) => s + Number(p.amount), 0);
+  const balance = round2(total - paid);
+
+  let paymentStatus: PurchaseStatus;
+  if (paid <= 0) paymentStatus = daysSince(purchase.date) > OVERDUE_AFTER_DAYS ? 'OVERDUE' : 'PENDING';
+  else if (paid < total - 0.01) paymentStatus = 'PART_PAID';
+  else paymentStatus = 'PAID';
+
+  return { ...purchase, paidAmount: round2(paid), balance, paymentStatus };
+}
 
 @Injectable()
 export class PurchasesService {
@@ -29,12 +59,23 @@ export class PurchasesService {
       if (existing) return existing; // offline replay — idempotent
     }
 
-    const items = dto.items.map((i) => ({
-      materialId: i.materialId,
-      quantity: i.quantity,
-      rate: i.rate,
-      amount: round2(i.quantity * i.rate),
-    }));
+    const materials = await this.prisma.material.findMany({
+      where: { id: { in: dto.items.map((i) => i.materialId) } },
+    });
+    const materialById = new Map(materials.map((m) => [m.id, m]));
+
+    const items = dto.items.map((i) => {
+      const material = materialById.get(i.materialId);
+      if (!material) throw new NotFoundException(`Material ${i.materialId} not found`);
+      return {
+        materialId: i.materialId,
+        // Unit actually transacted in (e.g. TON); defaults to the material's own unit.
+        unit: i.unit ?? material.unit,
+        quantity: i.quantity,
+        rate: i.rate,
+        amount: round2(i.quantity * i.rate),
+      };
+    });
     const subTotal = round2(items.reduce((s, i) => s + i.amount, 0));
     const freight = round2(dto.freight ?? 0);
     const total = round2(subTotal + freight);
@@ -59,12 +100,15 @@ export class PurchasesService {
         include: { items: true },
       });
 
-      // Stock IN for every line.
+      // Stock IN for every line, converted from the transacted unit into the
+      // material's stock unit (e.g. 50 TON purchased -> +1050 CFT in stock).
       for (const it of items) {
+        const material = materialById.get(it.materialId)!;
+        const stockQty = convertQty(it.quantity, it.unit, material.unit);
         await this.stock.apply(tx, {
           materialId: it.materialId,
           direction: StockDirection.IN,
-          quantity: it.quantity,
+          quantity: stockQty,
           refType: 'PURCHASE',
           refId: purchase.id,
           date,
@@ -112,8 +156,8 @@ export class PurchasesService {
     }, TXN_OPTIONS);
   }
 
-  list(params: { vendorId?: string; from?: string; to?: string; limit?: number }) {
-    return this.prisma.purchase.findMany({
+  async list(params: { vendorId?: string; from?: string; to?: string; limit?: number }) {
+    const purchases = await this.prisma.purchase.findMany({
       where: {
         ...(params.vendorId ? { vendorId: params.vendorId } : {}),
         ...(params.from || params.to
@@ -127,8 +171,26 @@ export class PurchasesService {
       },
       orderBy: { date: 'desc' },
       take: params.limit ?? 100,
-      include: { vendor: { select: { name: true } }, items: true },
+      include: {
+        vendor: { select: { name: true } },
+        items: true,
+        payments: { select: { amount: true, direction: true } },
+      },
     });
+    return purchases.map(withPurchaseStatus);
+  }
+
+  /** Purchases that still have an outstanding balance owed to the vendor. */
+  async findOutstanding() {
+    const purchases = await this.prisma.purchase.findMany({
+      where: { status: { not: TxnStatus.CANCELLED } },
+      orderBy: { date: 'desc' },
+      include: {
+        vendor: { select: { name: true } },
+        payments: { select: { amount: true, direction: true } },
+      },
+    });
+    return purchases.map(withPurchaseStatus).filter((p) => p.paymentStatus !== 'PAID');
   }
 
   async findOne(id: string) {
@@ -142,6 +204,6 @@ export class PurchasesService {
       },
     });
     if (!purchase) throw new NotFoundException('Purchase not found');
-    return purchase;
+    return withPurchaseStatus(purchase);
   }
 }

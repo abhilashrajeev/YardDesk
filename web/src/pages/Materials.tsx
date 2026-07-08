@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
-import { useFetch, money, qty } from '../lib/hooks';
+import { useFetch, qty } from '../lib/hooks';
 import type { Material, Unit } from '../types';
 
 export default function Materials() {
@@ -8,6 +8,9 @@ export default function Materials() {
   const [name, setName] = useState('');
   const [unit, setUnit] = useState<Unit>('CFT');
   const [defaultRate, setDefaultRate] = useState(0);
+  const [purchaseRate, setPurchaseRate] = useState(0);
+  const [allowTon, setAllowTon] = useState(false);
+  const [purchaseRateTon, setPurchaseRateTon] = useState(0);
   const [error, setError] = useState('');
 
   async function add(e: React.FormEvent) {
@@ -18,18 +21,23 @@ export default function Materials() {
         name,
         unit,
         defaultRate: defaultRate > 0 ? Number(defaultRate) : undefined,
+        purchaseRate: purchaseRate > 0 ? Number(purchaseRate) : undefined,
+        purchaseRateTon: unit === 'CFT' && allowTon && purchaseRateTon > 0 ? Number(purchaseRateTon) : undefined,
       });
       setName('');
       setDefaultRate(0);
+      setPurchaseRate(0);
+      setAllowTon(false);
+      setPurchaseRateTon(0);
       refetch();
     } catch (err) {
       setError(apiError(err));
     }
   }
 
-  async function saveRate(m: Material, value: number) {
+  async function saveField(m: Material, field: 'defaultRate' | 'purchaseRate' | 'purchaseRateTon', value: number) {
     try {
-      await api.patch(`/materials/${m.id}`, { defaultRate: value });
+      await api.patch(`/materials/${m.id}`, { [field]: value });
       refetch();
     } catch (e) {
       alert(apiError(e));
@@ -48,7 +56,7 @@ export default function Materials() {
               <input value={name} onChange={(e) => setName(e.target.value)} required />
             </div>
             <div>
-              <label>Unit</label>
+              <label>Sale unit (sold &amp; stocked in)</label>
               <select value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>
                 <option value="CFT">CFT</option>
                 <option value="BAG">BAG</option>
@@ -56,9 +64,30 @@ export default function Materials() {
               </select>
             </div>
             <div>
-              <label>Default rate</label>
+              <label>Sale rate</label>
               <input type="number" value={defaultRate || ''} onChange={(e) => setDefaultRate(Number(e.target.value))} />
             </div>
+          </div>
+          <div className="row">
+            <div>
+              <label>Purchase rate (₹/{unit.toLowerCase()})</label>
+              <input type="number" value={purchaseRate || ''} onChange={(e) => setPurchaseRate(Number(e.target.value))} />
+            </div>
+            {unit === 'CFT' && (
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, paddingBottom: 9 }}>
+                <input type="checkbox" style={{ width: 'auto' }} checked={allowTon} onChange={(e) => setAllowTon(e.target.checked)} />
+                <label style={{ margin: 0 }}>Also buy this by the ton</label>
+              </div>
+            )}
+            {unit === 'CFT' && allowTon && (
+              <div>
+                <label>Purchase rate (₹/ton)</label>
+                <input type="number" value={purchaseRateTon || ''} onChange={(e) => setPurchaseRateTon(Number(e.target.value))} />
+              </div>
+            )}
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: -6, marginBottom: 12 }}>
+            Ton ⇄ cft conversion is fixed at 1 ton = 21 cft.
           </div>
           {error && <div className="err">{error}</div>}
           <button className="btn">Add</button>
@@ -74,7 +103,9 @@ export default function Materials() {
                 <th>Name</th>
                 <th>Unit</th>
                 <th className="num">Stock</th>
-                <th className="num">Default rate</th>
+                <th className="num">Sale rate</th>
+                <th className="num">Purchase rate (own unit)</th>
+                <th className="num">Purchase rate (₹/ton)</th>
               </tr>
             </thead>
             <tbody>
@@ -90,9 +121,44 @@ export default function Materials() {
                       style={{ width: 90, textAlign: 'right' }}
                       onBlur={(e) => {
                         const v = Number(e.target.value);
-                        if (v !== Number(m.defaultRate ?? 0)) saveRate(m, v);
+                        if (v !== Number(m.defaultRate ?? 0)) saveField(m, 'defaultRate', v);
                       }}
                     />
+                  </td>
+                  <td className="num">
+                    <input
+                      type="number"
+                      defaultValue={m.purchaseRate ?? ''}
+                      style={{ width: 90, textAlign: 'right' }}
+                      onBlur={(e) => {
+                        const v = Number(e.target.value);
+                        if (v !== Number(m.purchaseRate ?? 0)) saveField(m, 'purchaseRate', v);
+                      }}
+                    />
+                  </td>
+                  <td className="num">
+                    {m.unit === 'CFT' ? (
+                      m.purchaseRateTon != null ? (
+                        <input
+                          type="number"
+                          defaultValue={m.purchaseRateTon}
+                          style={{ width: 90, textAlign: 'right' }}
+                          onBlur={(e) => {
+                            const v = Number(e.target.value);
+                            if (v !== Number(m.purchaseRateTon ?? 0)) saveField(m, 'purchaseRateTon', v);
+                          }}
+                        />
+                      ) : (
+                        <button
+                          className="btn ghost sm"
+                          onClick={() => saveField(m, 'purchaseRateTon', Math.round(Number(m.purchaseRate ?? m.defaultRate ?? 0) * 21))}
+                        >
+                          Enable
+                        </button>
+                      )
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
                   </td>
                 </tr>
               ))}

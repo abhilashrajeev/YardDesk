@@ -25,6 +25,19 @@ export class CreateMaterialDto {
   @IsNumber()
   @Min(0)
   defaultRate?: number;
+
+  // Rate for buying in the material's own unit.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  purchaseRate?: number;
+
+  // Rate for buying by the ton (only meaningful when unit = CFT). Its presence
+  // is what turns on "buy by the ton" for this material on the purchase form.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  purchaseRateTon?: number;
 }
 
 export class UpdateMaterialDto {
@@ -44,6 +57,16 @@ export class UpdateMaterialDto {
   @IsNumber()
   @Min(0)
   defaultRate?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  purchaseRate?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  purchaseRateTon?: number;
 
   @IsOptional()
   @IsBoolean()
