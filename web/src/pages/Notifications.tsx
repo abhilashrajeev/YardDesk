@@ -1,5 +1,5 @@
 import { api, apiError } from '../api/client';
-import { useFetch, fmtDate } from '../lib/hooks';
+import { useFetch, fmtDate, notifyNotificationsChanged } from '../lib/hooks';
 import type { Notification } from '../types';
 
 export default function Notifications() {
@@ -9,6 +9,7 @@ export default function Notifications() {
     try {
       await api.patch(`/notifications/${id}/read`);
       refetch();
+      notifyNotificationsChanged();
     } catch (e) {
       alert(apiError(e));
     }
@@ -16,11 +17,13 @@ export default function Notifications() {
   async function markAll() {
     await api.patch('/notifications/read-all');
     refetch();
+    notifyNotificationsChanged();
   }
   async function generate() {
     try {
       await api.post('/notifications/generate-reminders');
       refetch();
+      notifyNotificationsChanged();
     } catch (e) {
       alert(apiError(e));
     }

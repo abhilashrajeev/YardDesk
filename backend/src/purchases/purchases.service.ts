@@ -173,6 +173,7 @@ export class PurchasesService {
       take: params.limit ?? 100,
       include: {
         vendor: { select: { name: true } },
+        vehicle: { select: { number: true } },
         items: true,
         payments: { select: { amount: true, direction: true } },
       },

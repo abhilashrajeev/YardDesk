@@ -37,6 +37,13 @@ export default function PurchaseLineItems({ materials, lines, onChange }: Props)
     const mat = materials.find((m) => m.id === lines[i].materialId);
     update(i, { unit: unit as LineInput['unit'], rate: defaultRateFor(mat, unit) });
   }
+  /** Typing an amount directly back-solves the rate for the current quantity. */
+  function setAmount(i: number, amountStr: string) {
+    const amount = Number(amountStr);
+    const qty = lines[i].quantity;
+    if (!qty || Number.isNaN(amount)) return;
+    update(i, { rate: amount / qty });
+  }
   function add() {
     const mat = materials[0];
     const unit = purchaseUnitsFor(mat)[0];
@@ -105,7 +112,16 @@ export default function PurchaseLineItems({ materials, lines, onChange }: Props)
                     style={{ textAlign: 'right' }}
                   />
                 </td>
-                <td className="num">{money(l.quantity * l.rate)}</td>
+                <td className="num">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={(l.quantity * l.rate) || ''}
+                    title={l.quantity ? 'Type an amount to back-solve the rate' : 'Enter a quantity first'}
+                    onChange={(e) => setAmount(i, e.target.value)}
+                    style={{ textAlign: 'right' }}
+                  />
+                </td>
                 <td>
                   <button type="button" className="btn sm gray" onClick={() => remove(i)}>
                     ✕

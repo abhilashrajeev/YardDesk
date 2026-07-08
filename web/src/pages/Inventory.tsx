@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, qty, fmtDate } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
@@ -23,16 +23,37 @@ export default function Inventory() {
     selected ? `/inventory/movements?materialId=${selected}` : null,
   );
 
-  async function adjust(materialId: string) {
-    const val = prompt('Adjustment quantity (use negative to reduce):');
-    if (val == null) return;
-    const quantity = Number(val);
-    if (!quantity) return;
+  const [adjustingId, setAdjustingId] = useState<string | null>(null);
+  const [adjustQty, setAdjustQty] = useState('');
+  const [adjustError, setAdjustError] = useState('');
+  const [adjustSaving, setAdjustSaving] = useState(false);
+
+  function openAdjust(materialId: string) {
+    setAdjustingId(materialId);
+    setAdjustQty('');
+    setAdjustError('');
+  }
+  function cancelAdjust() {
+    setAdjustingId(null);
+    setAdjustQty('');
+    setAdjustError('');
+  }
+  async function submitAdjust(materialId: string) {
+    const quantity = Number(adjustQty);
+    if (!adjustQty || Number.isNaN(quantity) || quantity === 0) {
+      setAdjustError('Enter a non-zero quantity (negative to reduce).');
+      return;
+    }
+    setAdjustSaving(true);
+    setAdjustError('');
     try {
       await api.post('/inventory/adjust', { materialId, quantity, notes: 'Manual adjustment' });
+      cancelAdjust();
       refetch();
     } catch (e) {
-      alert(apiError(e));
+      setAdjustError(apiError(e));
+    } finally {
+      setAdjustSaving(false);
     }
   }
 
@@ -53,21 +74,48 @@ export default function Inventory() {
             </thead>
             <tbody>
               {stock?.map((m) => (
-                <tr key={m.id}>
-                  <td>{m.name}</td>
-                  <td className="muted">{m.unit}</td>
-                  <td className="num">
-                    <span className={Number(m.currentStock) < 0 ? 'pill neg' : ''}>{qty(m.currentStock)}</span>
-                  </td>
-                  <td className="right">
-                    <button className="btn sm ghost" onClick={() => setSelected(m.id)}>History</button>
-                    {isAdmin && (
-                      <button className="btn sm gray" style={{ marginLeft: 6 }} onClick={() => adjust(m.id)}>
-                        Adjust
-                      </button>
-                    )}
-                  </td>
-                </tr>
+                <Fragment key={m.id}>
+                  <tr>
+                    <td>{m.name}</td>
+                    <td className="muted">{m.unit}</td>
+                    <td className="num">
+                      <span className={Number(m.currentStock) < 0 ? 'pill neg' : ''}>{qty(m.currentStock)}</span>
+                    </td>
+                    <td className="right">
+                      <button className="btn sm ghost" onClick={() => setSelected(m.id)}>History</button>
+                      {isAdmin && (
+                        <button className="btn sm gray" style={{ marginLeft: 6 }} onClick={() => openAdjust(m.id)}>
+                          Adjust
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                  {adjustingId === m.id && (
+                    <tr>
+                      <td colSpan={4} style={{ background: '#fafbfc' }}>
+                        <div className="flex" style={{ gap: 10, padding: '4px 0' }}>
+                          <input
+                            type="number"
+                            step="0.001"
+                            placeholder="e.g. 50 or -10"
+                            value={adjustQty}
+                            onChange={(e) => setAdjustQty(e.target.value)}
+                            style={{ width: 160 }}
+                            autoFocus
+                          />
+                          <span className="muted" style={{ fontSize: 12 }}>
+                            positive adds, negative reduces ({m.unit.toLowerCase()})
+                          </span>
+                          <button className="btn sm" disabled={adjustSaving} onClick={() => submitAdjust(m.id)}>
+                            {adjustSaving ? 'Saving…' : 'Apply'}
+                          </button>
+                          <button className="btn sm gray" onClick={cancelAdjust}>Cancel</button>
+                        </div>
+                        {adjustError && <div className="err" style={{ margin: '4px 0 8px' }}>{adjustError}</div>}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

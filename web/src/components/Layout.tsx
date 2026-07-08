@@ -1,6 +1,7 @@
+import { useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { useFetch } from '../lib/hooks';
+import { useFetch, notificationsBus } from '../lib/hooks';
 import { Icon } from './Icon';
 
 const link = ({ isActive }: { isActive: boolean }) => (isActive ? 'active' : '');
@@ -35,7 +36,11 @@ export default function Layout() {
   const nav = useNavigate();
   const loc = useLocation();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
-  const { data: unread } = useFetch<number>('/notifications/unread-count');
+  const { data: unread, refetch: refetchUnread } = useFetch<number>('/notifications/unread-count');
+  useEffect(() => {
+    notificationsBus.addEventListener('changed', refetchUnread);
+    return () => notificationsBus.removeEventListener('changed', refetchUnread);
+  }, [refetchUnread]);
 
   return (
     <div className="app">

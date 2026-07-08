@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, apiError } from '../api/client';
 
+/** Fired whenever a notification is read/generated, so the topbar badge (a
+ * separate component instance) knows to refetch its unread count. */
+export const notificationsBus = new EventTarget();
+export const notifyNotificationsChanged = () => notificationsBus.dispatchEvent(new Event('changed'));
+
 /** Simple GET hook with loading/error and a refetch. */
 export function useFetch<T>(url: string | null) {
   const [data, setData] = useState<T | null>(null);

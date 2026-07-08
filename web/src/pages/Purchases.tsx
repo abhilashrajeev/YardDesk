@@ -3,12 +3,13 @@ import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate, statusPillClass } from '../lib/hooks';
 import PurchaseLineItems from '../components/PurchaseLineItems';
 import PurchaseDetail from '../components/PurchaseDetail';
-import type { Vendor, Material, Purchase, LineInput, PaymentMode } from '../types';
+import type { Vendor, Material, Purchase, LineInput, PaymentMode, Vehicle } from '../types';
 
 export default function Purchases() {
   const { data: purchases, refetch } = useFetch<Purchase[]>('/purchases');
   const { data: vendors } = useFetch<Vendor[]>('/vendors');
   const { data: materials } = useFetch<Material[]>('/inventory');
+  const { data: vehicles, refetch: refetchVehicles } = useFetch<Vehicle[]>('/vehicles');
   const [open, setOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
 
@@ -25,9 +26,11 @@ export default function Purchases() {
         <NewPurchase
           vendors={vendors}
           materials={materials}
+          vehicles={vehicles ?? []}
           onDone={() => {
             setOpen(false);
             refetch();
+            refetchVehicles();
           }}
         />
       )}
@@ -41,6 +44,7 @@ export default function Purchases() {
                 <th>Invoice</th>
                 <th>Date</th>
                 <th>Vendor</th>
+                <th>Vehicle</th>
                 <th className="num">Total</th>
                 <th>Status</th>
                 <th></th>
@@ -52,6 +56,7 @@ export default function Purchases() {
                   <td>{p.invoiceNo ?? '—'}</td>
                   <td>{fmtDate(p.date)}</td>
                   <td>{p.vendor?.name}</td>
+                  <td className="muted">{p.vehicle?.number ?? '—'}</td>
                   <td className="num">{money(p.total)}</td>
                   <td>
                     {p.paymentStatus && (
@@ -65,7 +70,7 @@ export default function Purchases() {
               ))}
               {purchases?.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="muted" style={{ padding: 16 }}>No purchases yet.</td>
+                  <td colSpan={7} className="muted" style={{ padding: 16 }}>No purchases yet.</td>
                 </tr>
               )}
             </tbody>
@@ -81,14 +86,17 @@ export default function Purchases() {
 function NewPurchase({
   vendors,
   materials,
+  vehicles,
   onDone,
 }: {
   vendors: Vendor[];
   materials: Material[];
+  vehicles: Vehicle[];
   onDone: () => void;
 }) {
   const [vendorId, setVendorId] = useState(vendors[0]?.id ?? '');
   const [invoiceNo, setInvoiceNo] = useState('');
+  const [vehicleNumber, setVehicleNumber] = useState('');
   const [freight, setFreight] = useState(0);
   const [paidAmount, setPaidAmount] = useState(0);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH');
@@ -101,6 +109,16 @@ function NewPurchase({
   const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
   const total = subTotal + Number(freight);
 
+  /** Same vehicle comes back daily — reuse it by number (case-insensitive), or register it on the fly. */
+  async function resolveVehicleId(): Promise<string | undefined> {
+    const num = vehicleNumber.trim();
+    if (!num) return undefined;
+    const existing = vehicles.find((v) => v.number.toLowerCase() === num.toLowerCase());
+    if (existing) return existing.id;
+    const { data } = await api.post('/vehicles', { number: num });
+    return data.id;
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -108,8 +126,10 @@ function NewPurchase({
     if (!items.length) return setError('Add at least one line with quantity.');
     setSaving(true);
     try {
+      const vehicleId = await resolveVehicleId();
       await api.post('/purchases', {
         vendorId,
+        vehicleId,
         invoiceNo: invoiceNo || undefined,
         freight: Number(freight),
         paidAmount: paidAmount > 0 ? Number(paidAmount) : undefined,
@@ -140,6 +160,20 @@ function NewPurchase({
           <div>
             <label>Vendor invoice # (optional)</label>
             <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} />
+          </div>
+          <div>
+            <label>Vehicle number (optional)</label>
+            <input
+              value={vehicleNumber}
+              onChange={(e) => setVehicleNumber(e.target.value)}
+              placeholder="e.g. KA-05-AB-1234"
+              list="vehicle-numbers"
+            />
+            <datalist id="vehicle-numbers">
+              {vehicles.map((v) => (
+                <option key={v.id} value={v.number} />
+              ))}
+            </datalist>
           </div>
         </div>
 

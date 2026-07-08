@@ -39,6 +39,12 @@ export interface Vendor {
   openingBalance: string;
 }
 
+export interface Vehicle {
+  id: string;
+  number: string;
+  type?: string | null;
+}
+
 export interface LineInput {
   materialId: string;
   quantity: number;
@@ -82,6 +88,7 @@ export interface Purchase {
   total: string;
   vendor?: { name: string };
   vendorId?: string;
+  vehicle?: { number: string } | null;
   items?: LineItem[];
   paidAmount?: number;
   balance?: number;
