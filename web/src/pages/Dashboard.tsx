@@ -1,4 +1,5 @@
-import { useFetch, money, qty } from '../lib/hooks';
+import { useFetch, money, qty, fmtDate } from '../lib/hooks';
+import { Icon } from '../components/Icon';
 import type { DailyReport, Material } from '../types';
 
 interface Outstanding {
@@ -14,85 +15,101 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="between" style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Today at a glance</h2>
-        <span className="muted">{report ? report.from : ''}</span>
+      <div className="page-head">
+        <div>
+          <h2>Today at a glance</h2>
+          <div className="sub">{report ? fmtDate(report.from) : ''}</div>
+        </div>
       </div>
 
       <div className="cards">
-        <div className="card">
-          <div className="label">Sales today</div>
-          <div className="value">{money(report?.sales.total)}</div>
-          <div className="muted">{report?.sales.count ?? 0} bills</div>
+        <div className="stat">
+          <div className="stat-icon amber"><Icon name="cart" /></div>
+          <div>
+            <div className="label">Sales today</div>
+            <div className="value">{money(report?.sales.total)}</div>
+            <div className="sub">{report?.sales.count ?? 0} bills</div>
+          </div>
         </div>
-        <div className="card">
-          <div className="label">Purchases today</div>
-          <div className="value">{money(report?.purchases.total)}</div>
-          <div className="muted">{report?.purchases.count ?? 0} entries</div>
+        <div className="stat">
+          <div className="stat-icon blue"><Icon name="truck" /></div>
+          <div>
+            <div className="label">Purchases today</div>
+            <div className="value">{money(report?.purchases.total)}</div>
+            <div className="sub">{report?.purchases.count ?? 0} entries</div>
+          </div>
         </div>
-        <div className="card">
-          <div className="label">Collected</div>
-          <div className="value" style={{ color: 'var(--green)' }}>{money(report?.payments.collected)}</div>
+        <div className="stat">
+          <div className="stat-icon green"><Icon name="up" /></div>
+          <div>
+            <div className="label">Collected</div>
+            <div className="value">{money(report?.payments.collected)}</div>
+            <div className="sub">received today</div>
+          </div>
         </div>
-        <div className="card">
-          <div className="label">Credit given today</div>
-          <div className="value" style={{ color: 'var(--red)' }}>{money(report?.creditGiven)}</div>
+        <div className="stat">
+          <div className="stat-icon red"><Icon name="down" /></div>
+          <div>
+            <div className="label">Credit given</div>
+            <div className="value">{money(report?.creditGiven)}</div>
+            <div className="sub">outstanding added</div>
+          </div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      <div className="grid-2">
         <div className="panel">
-          <h2>Current Stock</h2>
-          <div className="body" style={{ padding: 0 }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Material</th>
-                  <th className="num">Stock</th>
-                  <th>Unit</th>
+          <h2><Icon name="box" size={17} /> Current Stock</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Material</th>
+                <th className="num">Stock</th>
+                <th>Unit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stock?.map((m) => (
+                <tr key={m.id}>
+                  <td style={{ fontWeight: 500 }}>{m.name}</td>
+                  <td className="num">
+                    {Number(m.currentStock) < 0 ? (
+                      <span className="pill neg">{qty(m.currentStock)}</span>
+                    ) : (
+                      qty(m.currentStock)
+                    )}
+                  </td>
+                  <td className="muted">{m.unit}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {stock?.map((m) => (
-                  <tr key={m.id}>
-                    <td>{m.name}</td>
-                    <td className="num">
-                      <span className={Number(m.currentStock) < 0 ? 'pill neg' : ''}>{qty(m.currentStock)}</span>
-                    </td>
-                    <td className="muted">{m.unit}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
 
         <div className="panel">
-          <h2>Outstanding Customers</h2>
-          <div className="body" style={{ padding: 0 }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th className="num">Owes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dues?.length ? (
-                  dues.map((d) => (
-                    <tr key={d.id}>
-                      <td>{d.name}</td>
-                      <td className="num" style={{ color: 'var(--red)', fontWeight: 600 }}>{money(d.balance)}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={2} className="muted" style={{ padding: 16 }}>No dues 🎉</td>
+          <h2><Icon name="wallet" size={17} /> Outstanding Customers</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th className="num">Owes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dues?.length ? (
+                dues.map((d) => (
+                  <tr key={d.id}>
+                    <td style={{ fontWeight: 500 }}>{d.name}</td>
+                    <td className="num" style={{ color: 'var(--red)', fontWeight: 700 }}>{money(d.balance)}</td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={2} className="muted" style={{ padding: 18 }}>No dues 🎉</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </>

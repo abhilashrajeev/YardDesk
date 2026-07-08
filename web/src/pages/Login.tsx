@@ -23,24 +23,49 @@ export default function Login() {
 
   return (
     <div className="login-wrap">
-      <form className="login-card" onSubmit={submit}>
-        <h1>
-          Yard<span>ERP</span>
-        </h1>
-        <p>Sign in to continue</p>
-        <div style={{ marginBottom: 12 }}>
-          <label>Phone</label>
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="9999999999" autoFocus />
+      <div className="login-hero">
+        <div className="brand">
+          <div className="brand-mark">Y</div>
+          <div className="brand-name">
+            Yard<span>ERP</span>
+          </div>
         </div>
-        <div style={{ marginBottom: 18 }}>
-          <label>Password</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <div>
+          <h1>
+            Run your yard,
+            <br />
+            not your paperwork.
+          </h1>
+          <p>
+            Sales, purchases, stock, passes and payments — one place, updated the moment
+            a load leaves the gate.
+          </p>
         </div>
-        {error && <div className="err">{error}</div>}
-        <button className="btn" style={{ width: '100%' }} disabled={loading}>
-          {loading ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+        <div className="feats">
+          <div className="feat"><span className="dot" /> Real-time stock &amp; day-close</div>
+          <div className="feat"><span className="dot" /> Customer &amp; vendor ledgers</div>
+          <div className="feat"><span className="dot" /> Payment follow-up reminders</div>
+        </div>
+      </div>
+
+      <div className="login-form-side">
+        <form className="login-card" onSubmit={submit}>
+          <h2>Welcome back</h2>
+          <p className="lead">Sign in to your yard account</p>
+          <div style={{ marginBottom: 14 }}>
+            <label>Phone</label>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="9999999999" autoFocus />
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <label>Password</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+          </div>
+          {error && <div className="err">{error}</div>}
+          <button className="btn" style={{ width: '100%', padding: '12px' }} disabled={loading}>
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
