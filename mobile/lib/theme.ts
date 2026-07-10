@@ -13,3 +13,16 @@ export const colors = {
 
 export const money = (n: number | string | null | undefined) =>
   '₹' + Number(n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export const qty = (n: number | string | null | undefined) =>
+  Number(n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 3 });
+
+export const fmtDate = (s: string) =>
+  new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+/** Background color for a payment/txn-status pill. */
+export function statusColor(status?: string): string {
+  if (status === 'PAID') return colors.green;
+  if (status === 'OVERDUE' || status === 'CANCELLED') return colors.red;
+  return colors.primary; // PENDING / PART_PAID
+}

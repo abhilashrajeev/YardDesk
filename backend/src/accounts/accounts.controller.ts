@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { PartyType, Role } from '@prisma/client';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { PartyType, Permission, Role } from '@prisma/client';
 import { LedgerService } from './ledger.service';
 import { PaymentsService } from './payments.service';
-import { CreatePaymentDto } from './payments.dto';
-import { Roles, CurrentUser, AuthUser } from '../auth/decorators';
+import { CreatePaymentDto, UpdatePaymentDto } from './payments.dto';
+import { Roles, CurrentUser, AuthUser, RequirePermission } from '../auth/decorators';
 
 @Controller('accounts')
 export class AccountsController {
@@ -13,6 +13,7 @@ export class AccountsController {
   ) {}
 
   // --- Payments ---
+  @RequirePermission(Permission.PAYMENTS)
   @Post('payments')
   createPayment(@CurrentUser() user: AuthUser, @Body() dto: CreatePaymentDto) {
     return this.payments.create(dto, user.userId);
@@ -22,8 +23,25 @@ export class AccountsController {
   listPayments(
     @Query('customerId') customerId?: string,
     @Query('vendorId') vendorId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
-    return this.payments.list({ customerId, vendorId });
+    return this.payments.list({ customerId, vendorId, from, to });
+  }
+
+  @Get('payments/:id')
+  findOnePayment(@Param('id') id: string) {
+    return this.payments.findOne(id);
+  }
+
+  @Patch('payments/:id')
+  updatePayment(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdatePaymentDto) {
+    return this.payments.update(id, dto, user.userId);
+  }
+
+  @Delete('payments/:id')
+  removePayment(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.payments.remove(id, user.userId);
   }
 
   // --- Ledgers ---

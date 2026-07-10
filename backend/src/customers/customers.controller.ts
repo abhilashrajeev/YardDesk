@@ -11,7 +11,7 @@ import {
 import { Role } from '@prisma/client';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto';
-import { Roles } from '../auth/decorators';
+import { Roles, CurrentUser, AuthUser } from '../auth/decorators';
 
 @Controller('customers')
 export class CustomersController {
@@ -28,19 +28,19 @@ export class CustomersController {
   }
 
   @Post()
-  create(@Body() dto: CreateCustomerDto) {
-    return this.customers.create(dto);
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreateCustomerDto) {
+    return this.customers.create(dto, user.userId);
   }
 
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateCustomerDto) {
-    return this.customers.update(id, dto);
+  update(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdateCustomerDto) {
+    return this.customers.update(id, dto, user.userId);
   }
 
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Delete(':id')
-  deactivate(@Param('id') id: string) {
-    return this.customers.deactivate(id);
+  deactivate(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.customers.deactivate(id, user.userId);
   }
 }

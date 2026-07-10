@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, Alert } from 'react-native';
-import { cache } from '../../lib/masterCache';
-import { outbox } from '../../lib/outbox';
-import { syncNow } from '../../lib/sync';
-import { useNetwork } from '../../lib/net';
-import { Select } from '../../components/Select';
-import { Field, Button, Card } from '../../components/ui';
-import { colors, money } from '../../lib/theme';
-import type { Party, PaymentMode } from '../../lib/types';
+import { useRouter } from 'expo-router';
+import { cache } from '../../../lib/masterCache';
+import { outbox } from '../../../lib/outbox';
+import { syncNow } from '../../../lib/sync';
+import { useNetwork } from '../../../lib/net';
+import { Select } from '../../../components/Select';
+import { Field, Button, Card } from '../../../components/ui';
+import { colors, money } from '../../../lib/theme';
+import type { Party, PaymentMode } from '../../../lib/types';
 
 const MODES: { label: string; value: PaymentMode }[] = [
   { label: 'Cash', value: 'CASH' },
@@ -15,7 +16,8 @@ const MODES: { label: string; value: PaymentMode }[] = [
   { label: 'Bank', value: 'BANK' },
 ];
 
-export default function PaymentScreen() {
+export default function NewPaymentScreen() {
+  const router = useRouter();
   const online = useNetwork();
   const [partyType, setPartyType] = useState<'CUSTOMER' | 'VENDOR'>('CUSTOMER');
   const [customers, setCustomers] = useState<Party[]>([]);
@@ -60,14 +62,13 @@ export default function PaymentScreen() {
         },
         `${name} · ${money(amt)}`,
       );
-      setAmount('');
-      setReference('');
       if (online) {
         const r = await syncNow();
         Alert.alert('Saved', r.offline ? 'Saved offline — will sync later.' : 'Payment synced to office.');
       } else {
         Alert.alert('Saved offline', 'Payment queued — it will sync when online.');
       }
+      router.back();
     } finally {
       setSaving(false);
     }

@@ -1,30 +1,44 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate, statusPillClass } from '../lib/hooks';
+import { useAuth } from '../auth/AuthContext';
 import PurchaseLineItems from '../components/PurchaseLineItems';
 import PurchaseDetail from '../components/PurchaseDetail';
+import VendorPicker from '../components/VendorPicker';
+import PeriodFilter, { defaultPeriodState, periodRange, periodLabel } from '../components/PeriodFilter';
 import type { Vendor, Material, Purchase, LineInput, PaymentMode, Vehicle } from '../types';
 
 export default function Purchases() {
-  const { data: purchases, refetch } = useFetch<Purchase[]>('/purchases');
-  const { data: vendors } = useFetch<Vendor[]>('/vendors');
+  const { user } = useAuth();
+  const canCreate = user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes('PURCHASES');
+  const [period, setPeriod] = useState(defaultPeriodState());
+  const { from, to } = periodRange(period);
+  const purchasesUrl = from ? `/purchases?from=${from}&to=${to}` : '/purchases';
+  const { data: purchases, refetch } = useFetch<Purchase[]>(purchasesUrl);
+  const { data: vendors, setData: setVendors } = useFetch<Vendor[]>('/vendors');
   const { data: materials } = useFetch<Material[]>('/inventory');
   const { data: vehicles, refetch: refetchVehicles } = useFetch<Vehicle[]>('/vehicles');
   const [open, setOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
 
+  const active = purchases?.filter((p) => p.status !== 'CANCELLED') ?? [];
+  const periodTotal = active.reduce((sum, p) => sum + Number(p.total), 0);
+
   return (
     <>
       <div className="between" style={{ marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>Purchases</h2>
-        <button className="btn" onClick={() => setOpen((o) => !o)}>
-          {open ? 'Close' : '+ New Purchase'}
-        </button>
+        {canCreate && (
+          <button className="btn" onClick={() => setOpen((o) => !o)}>
+            {open ? 'Close' : '+ New Purchase'}
+          </button>
+        )}
       </div>
 
-      {open && vendors && materials && (
+      {open && canCreate && vendors && materials && (
         <NewPurchase
           vendors={vendors}
+          onVendorCreated={(v) => setVendors([...(vendors ?? []), v])}
           materials={materials}
           vehicles={vehicles ?? []}
           onDone={() => {
@@ -36,7 +50,14 @@ export default function Purchases() {
       )}
 
       <div className="panel">
-        <h2>Recent Purchases</h2>
+        <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
+          <h2 style={{ margin: 0 }}>Purchases — {periodLabel(period)}</h2>
+          <PeriodFilter value={period} onChange={setPeriod} allowRecent />
+        </div>
+        <div className="between" style={{ padding: '10px 16px' }}>
+          <span className="muted">{active.length} entr{active.length === 1 ? 'y' : 'ies'}</span>
+          <span>Total: <strong>{money(periodTotal)}</strong></span>
+        </div>
         <div className="body" style={{ padding: 0 }}>
           <table>
             <thead>
@@ -59,8 +80,12 @@ export default function Purchases() {
                   <td className="muted">{p.vehicle?.number ?? '—'}</td>
                   <td className="num">{money(p.total)}</td>
                   <td>
-                    {p.paymentStatus && (
-                      <span className={`pill ${statusPillClass(p.paymentStatus)}`}>{p.paymentStatus}</span>
+                    {p.status === 'CANCELLED' ? (
+                      <span className="pill neg">CANCELLED</span>
+                    ) : (
+                      p.paymentStatus && (
+                        <span className={`pill ${statusPillClass(p.paymentStatus)}`}>{p.paymentStatus}</span>
+                      )
                     )}
                   </td>
                   <td className="right">
@@ -70,7 +95,7 @@ export default function Purchases() {
               ))}
               {purchases?.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="muted" style={{ padding: 16 }}>No purchases yet.</td>
+                  <td colSpan={7} className="muted" style={{ padding: 16 }}>No purchases for this period.</td>
                 </tr>
               )}
             </tbody>
@@ -85,11 +110,13 @@ export default function Purchases() {
 
 function NewPurchase({
   vendors,
+  onVendorCreated,
   materials,
   vehicles,
   onDone,
 }: {
   vendors: Vendor[];
+  onVendorCreated: (vendor: Vendor) => void;
   materials: Material[];
   vehicles: Vehicle[];
   onDone: () => void;
@@ -151,11 +178,12 @@ function NewPurchase({
         <div className="row">
           <div>
             <label>Vendor</label>
-            <select value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
-              {vendors.map((v) => (
-                <option key={v.id} value={v.id}>{v.name}</option>
-              ))}
-            </select>
+            <VendorPicker
+              vendors={vendors}
+              value={vendorId}
+              onChange={setVendorId}
+              onCreated={onVendorCreated}
+            />
           </div>
           <div>
             <label>Vendor invoice # (optional)</label>
@@ -181,7 +209,7 @@ function NewPurchase({
 
         <div className="row" style={{ marginTop: 14 }}>
           <div>
-            <label>Freight</label>
+            <label>Transportation charge</label>
             <input type="number" value={freight || ''} onChange={(e) => setFreight(Number(e.target.value))} />
           </div>
           <div>

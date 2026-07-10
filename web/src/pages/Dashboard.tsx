@@ -8,8 +8,61 @@ interface Outstanding {
   balance: number;
 }
 
+function monthRange() {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const to = now.toISOString().slice(0, 10);
+  return { from, to };
+}
+
+function ReportCards({ report, salesLabel, purchasesLabel, collectedLabel }: {
+  report: DailyReport | null;
+  salesLabel: string;
+  purchasesLabel: string;
+  collectedLabel: string;
+}) {
+  return (
+    <div className="cards">
+      <div className="stat">
+        <div className="stat-icon amber"><Icon name="cart" /></div>
+        <div>
+          <div className="label">{salesLabel}</div>
+          <div className="value">{money(report?.sales.total)}</div>
+          <div className="sub">{report?.sales.count ?? 0} bills</div>
+        </div>
+      </div>
+      <div className="stat">
+        <div className="stat-icon blue"><Icon name="truck" /></div>
+        <div>
+          <div className="label">{purchasesLabel}</div>
+          <div className="value">{money(report?.purchases.total)}</div>
+          <div className="sub">{report?.purchases.count ?? 0} entries</div>
+        </div>
+      </div>
+      <div className="stat">
+        <div className="stat-icon green"><Icon name="up" /></div>
+        <div>
+          <div className="label">Collected</div>
+          <div className="value">{money(report?.payments.collected)}</div>
+          <div className="sub">{collectedLabel}</div>
+        </div>
+      </div>
+      <div className="stat">
+        <div className="stat-icon red"><Icon name="down" /></div>
+        <div>
+          <div className="label">Credit given</div>
+          <div className="value">{money(report?.creditGiven)}</div>
+          <div className="sub">outstanding added</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { data: report } = useFetch<DailyReport>('/reports/daily');
+  const { from, to } = monthRange();
+  const { data: monthReport } = useFetch<DailyReport>(`/reports/summary?from=${from}&to=${to}`);
   const { data: stock } = useFetch<Material[]>('/inventory');
   const { data: dues } = useFetch<Outstanding[]>('/accounts/outstanding/customers');
 
@@ -22,40 +75,16 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="cards">
-        <div className="stat">
-          <div className="stat-icon amber"><Icon name="cart" /></div>
-          <div>
-            <div className="label">Sales today</div>
-            <div className="value">{money(report?.sales.total)}</div>
-            <div className="sub">{report?.sales.count ?? 0} bills</div>
-          </div>
-        </div>
-        <div className="stat">
-          <div className="stat-icon blue"><Icon name="truck" /></div>
-          <div>
-            <div className="label">Purchases today</div>
-            <div className="value">{money(report?.purchases.total)}</div>
-            <div className="sub">{report?.purchases.count ?? 0} entries</div>
-          </div>
-        </div>
-        <div className="stat">
-          <div className="stat-icon green"><Icon name="up" /></div>
-          <div>
-            <div className="label">Collected</div>
-            <div className="value">{money(report?.payments.collected)}</div>
-            <div className="sub">received today</div>
-          </div>
-        </div>
-        <div className="stat">
-          <div className="stat-icon red"><Icon name="down" /></div>
-          <div>
-            <div className="label">Credit given</div>
-            <div className="value">{money(report?.creditGiven)}</div>
-            <div className="sub">outstanding added</div>
-          </div>
+      <ReportCards report={report} salesLabel="Sales today" purchasesLabel="Purchases today" collectedLabel="received today" />
+
+      <div className="page-head" style={{ marginTop: 24 }}>
+        <div>
+          <h2>This month</h2>
+          <div className="sub">{monthReport ? `${fmtDate(monthReport.from)} – ${fmtDate(monthReport.to)}` : ''}</div>
         </div>
       </div>
+
+      <ReportCards report={monthReport} salesLabel="Sales this month" purchasesLabel="Purchases this month" collectedLabel="received this month" />
 
       <div className="grid-2">
         <div className="panel">

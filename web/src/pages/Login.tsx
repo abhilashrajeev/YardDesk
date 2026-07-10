@@ -25,10 +25,10 @@ export default function Login() {
     <div className="login-wrap">
       <div className="login-hero">
         <div className="brand">
-          <div className="brand-mark">D</div>
+          <div className="brand-mark">Y</div>
           <div className="brand-name">
-            Devi Traders
-            <small>Building Materials Supplier</small>
+            YardDesk
+            <small>Smart ERP for Building Material Dealers</small>
           </div>
         </div>
         <div>

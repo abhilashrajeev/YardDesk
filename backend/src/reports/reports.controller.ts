@@ -36,6 +36,12 @@ export class ReportsController {
     return this.reports.materialBreakdown(d(from, today), d(to, today));
   }
 
+  @Get('expenses')
+  expenses(@Query('from') from: string, @Query('to') to: string) {
+    const today = todayIST();
+    return this.reports.expenseBreakdown(d(from, today), d(to, today));
+  }
+
   @Get('series')
   series(
     @Query('from') from: string,

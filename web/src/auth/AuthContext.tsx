@@ -7,6 +7,7 @@ interface AuthCtx {
   loading: boolean;
   login: (phone: string, password: string) => Promise<void>;
   logout: () => void;
+  updateUser: (patch: Partial<User>) => void;
 }
 
 const Ctx = createContext<AuthCtx>(null!);
@@ -44,5 +45,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
-  return <Ctx.Provider value={{ user, loading, login, logout }}>{children}</Ctx.Provider>;
+  /** Merge a partial update (e.g. after a profile edit) into the cached user, without a fresh login. */
+  function updateUser(patch: Partial<User>) {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      localStorage.setItem(USER_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  return <Ctx.Provider value={{ user, loading, login, logout, updateUser }}>{children}</Ctx.Provider>;
 }

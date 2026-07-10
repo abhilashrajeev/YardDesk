@@ -1,30 +1,44 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate, statusPillClass } from '../lib/hooks';
+import { useAuth } from '../auth/AuthContext';
 import LineItems from '../components/LineItems';
 import SaleDetail from '../components/SaleDetail';
+import CustomerPicker from '../components/CustomerPicker';
+import PeriodFilter, { defaultPeriodState, periodRange, periodLabel } from '../components/PeriodFilter';
 import type { Customer, Material, Sale, LineInput, PaymentMode } from '../types';
 
 export default function Sales() {
-  const { data: sales, refetch } = useFetch<Sale[]>('/sales');
-  const { data: customers } = useFetch<Customer[]>('/customers');
+  const { user } = useAuth();
+  const canCreate = user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes('SALES');
+  const [period, setPeriod] = useState(defaultPeriodState());
+  const { from, to } = periodRange(period);
+  const salesUrl = from ? `/sales?from=${from}&to=${to}` : '/sales';
+  const { data: sales, refetch } = useFetch<Sale[]>(salesUrl);
+  const { data: customers, setData: setCustomers } = useFetch<Customer[]>('/customers');
   const { data: materials } = useFetch<Material[]>('/inventory');
   const [open, setOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
+
+  const active = sales?.filter((s) => s.status !== 'CANCELLED') ?? [];
+  const periodTotal = active.reduce((sum, s) => sum + Number(s.total), 0);
 
   return (
     <>
       <div className="between" style={{ marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>Sales &amp; Billing</h2>
-        <button className="btn" onClick={() => setOpen((o) => !o)}>
-          {open ? 'Close' : '+ New Sale'}
-        </button>
+        {canCreate && (
+          <button className="btn" onClick={() => setOpen((o) => !o)}>
+            {open ? 'Close' : '+ New Sale'}
+          </button>
+        )}
       </div>
 
-      {open && customers && materials && (
+      {open && canCreate && customers && materials && (
         <NewSale
           customers={customers}
           materials={materials}
+          onCustomerCreated={(c) => setCustomers([...(customers ?? []), c])}
           onDone={() => {
             setOpen(false);
             refetch();
@@ -33,7 +47,14 @@ export default function Sales() {
       )}
 
       <div className="panel">
-        <h2>Recent Sales</h2>
+        <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
+          <h2 style={{ margin: 0 }}>Sales — {periodLabel(period)}</h2>
+          <PeriodFilter value={period} onChange={setPeriod} allowRecent />
+        </div>
+        <div className="between" style={{ padding: '10px 16px' }}>
+          <span className="muted">{active.length} bill{active.length === 1 ? '' : 's'}</span>
+          <span>Total: <strong>{money(periodTotal)}</strong></span>
+        </div>
         <div className="body" style={{ padding: 0 }}>
           <table>
             <thead>
@@ -58,8 +79,12 @@ export default function Sales() {
                   </td>
                   <td className="num">{money(s.total)}</td>
                   <td>
-                    {s.paymentStatus && (
-                      <span className={`pill ${statusPillClass(s.paymentStatus)}`}>{s.paymentStatus}</span>
+                    {s.status === 'CANCELLED' ? (
+                      <span className="pill neg">CANCELLED</span>
+                    ) : (
+                      s.paymentStatus && (
+                        <span className={`pill ${statusPillClass(s.paymentStatus)}`}>{s.paymentStatus}</span>
+                      )
                     )}
                   </td>
                   <td className="right">
@@ -69,7 +94,7 @@ export default function Sales() {
               ))}
               {sales?.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="muted" style={{ padding: 16 }}>No sales yet.</td>
+                  <td colSpan={7} className="muted" style={{ padding: 16 }}>No sales for this period.</td>
                 </tr>
               )}
             </tbody>
@@ -85,10 +110,12 @@ export default function Sales() {
 function NewSale({
   customers,
   materials,
+  onCustomerCreated,
   onDone,
 }: {
   customers: Customer[];
   materials: Material[];
+  onCustomerCreated: (c: Customer) => void;
   onDone: () => void;
 }) {
   const [customerId, setCustomerId] = useState(customers[0]?.id ?? '');
@@ -135,11 +162,12 @@ function NewSale({
         <div className="row">
           <div>
             <label>Customer</label>
-            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+            <CustomerPicker
+              customers={customers}
+              value={customerId}
+              onChange={setCustomerId}
+              onCreated={onCustomerCreated}
+            />
           </div>
           <div>
             <label>Payment mode</label>
@@ -156,7 +184,7 @@ function NewSale({
 
         <div className="row" style={{ marginTop: 14 }}>
           <div>
-            <label>Freight</label>
+            <label>Transportation charge</label>
             <input type="number" value={freight || ''} onChange={(e) => setFreight(Number(e.target.value))} />
           </div>
           <div>

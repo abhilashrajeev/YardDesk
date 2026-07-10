@@ -1,12 +1,14 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Permission } from '@prisma/client';
 import { SalesService } from './sales.service';
-import { CreateSaleDto, CreatePassDto } from './dto';
-import { CurrentUser, AuthUser } from '../auth/decorators';
+import { CreateSaleDto, UpdateSaleDto, CreatePassDto } from './dto';
+import { CurrentUser, AuthUser, RequirePermission } from '../auth/decorators';
 
 @Controller('sales')
 export class SalesController {
   constructor(private sales: SalesService) {}
 
+  @RequirePermission(Permission.SALES)
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateSaleDto) {
     return this.sales.create(dto, user.userId);
@@ -30,6 +32,16 @@ export class SalesController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.sales.findOne(id);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdateSaleDto) {
+    return this.sales.update(id, dto, user.userId);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.sales.remove(id, user.userId);
   }
 
   @Post(':id/gate-pass')

@@ -20,7 +20,12 @@ type IconName =
   | 'clock'
   | 'x'
   | 'check'
-  | 'eye';
+  | 'eye'
+  | 'receipt'
+  | 'history'
+  | 'edit'
+  | 'trash'
+  | 'menu';
 
 const paths: Record<IconName, JSX.Element> = {
   grid: (
@@ -142,6 +147,35 @@ const paths: Record<IconName, JSX.Element> = {
     <>
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
       <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  receipt: (
+    <>
+      <path d="M4 2h16v20l-3-2-3 2-3-2-3 2-3-2-1 2z" />
+      <path d="M8 7h8M8 11h8M8 15h5" />
+    </>
+  ),
+  history: (
+    <>
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 3v6h6" />
+      <path d="M12 7v5l4 2" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
+    </>
+  ),
+  menu: (
+    <>
+      <path d="M3 6h18M3 12h18M3 18h18" />
     </>
   ),
 };

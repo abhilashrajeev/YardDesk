@@ -12,9 +12,9 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Yard ERP', tabBarLabel: 'Home' }} />
-      <Tabs.Screen name="sale" options={{ title: 'New Sale', tabBarLabel: 'Sale' }} />
-      <Tabs.Screen name="purchase" options={{ title: 'New Purchase', tabBarLabel: 'Purchase' }} />
-      <Tabs.Screen name="payment" options={{ title: 'Payment', tabBarLabel: 'Payment' }} />
+      <Tabs.Screen name="sale" options={{ headerShown: false, tabBarLabel: 'Sale' }} />
+      <Tabs.Screen name="purchase" options={{ headerShown: false, tabBarLabel: 'Purchase' }} />
+      <Tabs.Screen name="payment" options={{ headerShown: false, tabBarLabel: 'Payment' }} />
     </Tabs>
   );
 }

@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, View, Text, Switch, StyleSheet, Alert } from 'react-native';
-import { cache } from '../../lib/masterCache';
-import { outbox } from '../../lib/outbox';
-import { syncNow } from '../../lib/sync';
-import { useNetwork } from '../../lib/net';
-import { Select } from '../../components/Select';
-import { LineEditor } from '../../components/LineEditor';
-import { Field, Button, Card } from '../../components/ui';
-import { colors, money } from '../../lib/theme';
-import type { Material, Party, Line, PaymentMode } from '../../lib/types';
+import { useRouter } from 'expo-router';
+import { cache } from '../../../lib/masterCache';
+import { outbox } from '../../../lib/outbox';
+import { syncNow } from '../../../lib/sync';
+import { useNetwork } from '../../../lib/net';
+import { Select } from '../../../components/Select';
+import { LineEditor } from '../../../components/LineEditor';
+import { Field, Button, Card } from '../../../components/ui';
+import { colors, money } from '../../../lib/theme';
+import type { Material, Party, Line, PaymentMode } from '../../../lib/types';
 
 const MODES: { label: string; value: PaymentMode }[] = [
   { label: 'Cash', value: 'CASH' },
@@ -17,7 +18,8 @@ const MODES: { label: string; value: PaymentMode }[] = [
   { label: 'Credit', value: 'CREDIT' },
 ];
 
-export default function SaleScreen() {
+export default function NewSaleScreen() {
+  const router = useRouter();
   const online = useNetwork();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [customers, setCustomers] = useState<Party[]>([]);
@@ -57,18 +59,13 @@ export default function SaleScreen() {
       if (gatePass) await outbox.add('GATE_PASS', {}, `Gate pass · ${custName}`, sale.clientUuid);
       if (loadingPass) await outbox.add('LOADING_PASS', {}, `Loading pass · ${custName}`, sale.clientUuid);
 
-      // reset
-      setLines([{ materialId: materials[0]?.id ?? '', quantity: 0, rate: 0 }]);
-      setFreight('0');
-      setGatePass(false);
-      setLoadingPass(false);
-
       if (online) {
         const r = await syncNow();
         Alert.alert('Saved', r.offline ? 'Saved offline — will sync later.' : 'Sale synced to office.');
       } else {
         Alert.alert('Saved offline', 'Sale queued — it will sync automatically when online.');
       }
+      router.back();
     } finally {
       setSaving(false);
     }
@@ -94,7 +91,7 @@ export default function SaleScreen() {
       <Card>
         <Text style={s.h}>Items</Text>
         <LineEditor materials={materials} lines={lines} onChange={setLines} />
-        <Field label="Freight" value={freight} onChangeText={setFreight} keyboardType="decimal-pad" />
+        <Field label="Transportation charge" value={freight} onChangeText={setFreight} keyboardType="decimal-pad" />
       </Card>
 
       <Card>

@@ -90,33 +90,43 @@ export class LedgerService {
     return { balance, entries };
   }
 
-  /** Parties with outstanding balance (> 0). */
+  /** Parties with outstanding balance (> 0). Single query per side instead of one-per-party. */
   async outstanding(partyType: PartyType) {
     if (partyType === PartyType.CUSTOMER) {
-      const customers = await this.prisma.customer.findMany({
-        where: { isActive: true },
-      });
-      const rows = await Promise.all(
-        customers.map(async (c) => ({
-          id: c.id,
-          name: c.name,
-          phone: c.phone,
-          balance: await this.currentBalance(this.prisma, PartyType.CUSTOMER, c.id),
-        })),
-      );
+      const [customers, latest] = await Promise.all([
+        this.prisma.customer.findMany({ where: { isActive: true } }),
+        this.prisma.$queryRaw<{ customerId: string; balance: Prisma.Decimal }[]>`
+          SELECT DISTINCT ON ("customerId") "customerId", balance
+          FROM "LedgerEntry"
+          WHERE "customerId" IS NOT NULL
+          ORDER BY "customerId", "createdAt" DESC
+        `,
+      ]);
+      const byId = new Map(latest.map((l) => [l.customerId, Number(l.balance)]));
+      const rows = customers.map((c) => ({
+        id: c.id,
+        name: c.name,
+        phone: c.phone,
+        balance: byId.has(c.id) ? byId.get(c.id)! : Number(c.openingBalance),
+      }));
       return rows.filter((r) => r.balance > 0).sort((a, b) => b.balance - a.balance);
     }
-    const vendors = await this.prisma.vendor.findMany({
-      where: { isActive: true },
-    });
-    const rows = await Promise.all(
-      vendors.map(async (v) => ({
-        id: v.id,
-        name: v.name,
-        phone: v.phone,
-        balance: await this.currentBalance(this.prisma, PartyType.VENDOR, undefined, v.id),
-      })),
-    );
+    const [vendors, latest] = await Promise.all([
+      this.prisma.vendor.findMany({ where: { isActive: true } }),
+      this.prisma.$queryRaw<{ vendorId: string; balance: Prisma.Decimal }[]>`
+        SELECT DISTINCT ON ("vendorId") "vendorId", balance
+        FROM "LedgerEntry"
+        WHERE "vendorId" IS NOT NULL
+        ORDER BY "vendorId", "createdAt" DESC
+      `,
+    ]);
+    const byId = new Map(latest.map((l) => [l.vendorId, Number(l.balance)]));
+    const rows = vendors.map((v) => ({
+      id: v.id,
+      name: v.name,
+      phone: v.phone,
+      balance: byId.has(v.id) ? byId.get(v.id)! : Number(v.openingBalance),
+    }));
     return rows.filter((r) => r.balance > 0).sort((a, b) => b.balance - a.balance);
   }
 }

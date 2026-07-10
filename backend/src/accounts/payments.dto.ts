@@ -50,3 +50,11 @@ export class CreatePaymentDto {
   @IsDateString()
   date?: string;
 }
+
+export class UpdatePaymentDto {
+  @IsOptional() @IsEnum(PaymentMode) mode?: PaymentMode;
+  @IsOptional() @IsNumber() @Min(0.01) amount?: number;
+  @IsOptional() @IsString() reference?: string;
+  @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsDateString() date?: string;
+}

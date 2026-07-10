@@ -1,17 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  AuditAction,
   PartyType,
   PaymentDirection,
   PaymentMode,
+  Prisma,
   StockDirection,
   TxnStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../inventory/stock.service';
 import { LedgerService } from '../accounts/ledger.service';
-import { CreateSaleDto, CreatePassDto } from './dto';
+import { AuditService } from '../audit/audit.service';
+import { CreateSaleDto, UpdateSaleDto, CreatePassDto } from './dto';
 import { round2 } from '../common/money';
 import { TXN_OPTIONS } from '../common/db';
+import { istDayRange } from '../common/date';
 
 type SaleStatus = 'PAID' | 'PART_PAID' | 'PENDING' | 'OVERDUE';
 const OVERDUE_AFTER_DAYS = 21;
@@ -54,6 +58,7 @@ export class SalesService {
     private prisma: PrismaService,
     private stock: StockService,
     private ledger: LedgerService,
+    private audit: AuditService,
   ) {}
 
   async create(dto: CreateSaleDto, userId: string) {
@@ -64,6 +69,16 @@ export class SalesService {
       });
       if (existing) return existing; // offline replay — idempotent
     }
+
+    const customer = await this.prisma.customer.findUnique({ where: { id: dto.customerId } });
+    if (!customer) throw new NotFoundException('Customer not found');
+    if (dto.vehicleId) {
+      const vehicle = await this.prisma.vehicle.findUnique({ where: { id: dto.vehicleId } });
+      if (!vehicle) throw new NotFoundException('Vehicle not found');
+    }
+    const materialIds = [...new Set(dto.items.map((i) => i.materialId))];
+    const materialCount = await this.prisma.material.count({ where: { id: { in: materialIds } } });
+    if (materialCount !== materialIds.length) throw new NotFoundException('One or more materials not found');
 
     const items = dto.items.map((i) => ({
       materialId: i.materialId,
@@ -212,8 +227,8 @@ export class SalesService {
         ...(params.from || params.to
           ? {
               date: {
-                ...(params.from ? { gte: new Date(params.from) } : {}),
-                ...(params.to ? { lte: new Date(params.to) } : {}),
+                ...(params.from ? { gte: istDayRange(params.from).start } : {}),
+                ...(params.to ? { lt: istDayRange(params.to).end } : {}),
               },
             }
           : {}),
@@ -232,7 +247,7 @@ export class SalesService {
   /** Credit bills that aren't fully paid — pending, part-paid, or overdue. */
   async findOutstanding() {
     const sales = await this.prisma.sale.findMany({
-      where: { paymentMode: PaymentMode.CREDIT },
+      where: { paymentMode: PaymentMode.CREDIT, status: { not: TxnStatus.CANCELLED } },
       orderBy: { date: 'desc' },
       include: {
         customer: { select: { name: true } },
@@ -256,5 +271,156 @@ export class SalesService {
     });
     if (!sale) throw new NotFoundException('Sale not found');
     return withSaleStatus(sale);
+  }
+
+  /**
+   * Reverse a confirmed sale's stock and ledger effects: stock goes back IN,
+   * and a compensating ledger credit cancels out the original debit. Used by
+   * both `update` (reverse-then-reapply) and `remove` (reverse-and-cancel).
+   * Existing payments against the sale are left untouched — they're a
+   * separate fact (money that genuinely moved).
+   */
+  private async reverseEffects(
+    tx: Prisma.TransactionClient,
+    sale: { id: string; billNo: string | null; customerId: string; total: Prisma.Decimal | number },
+    items: { materialId: string; quantity: Prisma.Decimal | number }[],
+    date: Date,
+  ) {
+    for (const it of items) {
+      await this.stock.apply(tx, {
+        materialId: it.materialId,
+        direction: StockDirection.IN,
+        quantity: Number(it.quantity),
+        refType: 'SALE_REVERSAL',
+        refId: sale.id,
+        date,
+      });
+    }
+    await this.ledger.post(tx, {
+      partyType: PartyType.CUSTOMER,
+      customerId: sale.customerId,
+      description: `Reversal of bill ${sale.billNo ?? sale.id}`,
+      credit: Number(sale.total),
+      refType: 'SALE_REVERSAL',
+      refId: sale.id,
+      date,
+    });
+  }
+
+  /** Edit a sale: reverses its old stock/ledger effect, then reapplies with the new values. */
+  async update(id: string, dto: UpdateSaleDto, userId: string) {
+    const existing = await this.prisma.sale.findUnique({ where: { id }, include: { items: true } });
+    if (!existing) throw new NotFoundException('Sale not found');
+    if (existing.status === TxnStatus.CANCELLED) {
+      throw new BadRequestException('This sale was deleted and cannot be edited.');
+    }
+
+    const customerId = dto.customerId ?? existing.customerId;
+    if (dto.customerId) {
+      const customer = await this.prisma.customer.findUnique({ where: { id: dto.customerId } });
+      if (!customer) throw new NotFoundException('Customer not found');
+    }
+    if (dto.vehicleId) {
+      const vehicle = await this.prisma.vehicle.findUnique({ where: { id: dto.vehicleId } });
+      if (!vehicle) throw new NotFoundException('Vehicle not found');
+    }
+    if (dto.items) {
+      const materialIds = [...new Set(dto.items.map((i) => i.materialId))];
+      const materialCount = await this.prisma.material.count({ where: { id: { in: materialIds } } });
+      if (materialCount !== materialIds.length) throw new NotFoundException('One or more materials not found');
+    }
+    const items = (dto.items ?? existing.items).map((i) => ({
+      materialId: i.materialId,
+      quantity: Number(i.quantity),
+      rate: Number(i.rate),
+      amount: round2(Number(i.quantity) * Number(i.rate)),
+    }));
+    const subTotal = round2(items.reduce((s, i) => s + i.amount, 0));
+    const freight = dto.freight !== undefined ? round2(dto.freight) : Number(existing.freight);
+    const discount = dto.discount !== undefined ? round2(dto.discount) : Number(existing.discount);
+    const total = round2(subTotal + freight - discount);
+    const paymentMode = dto.paymentMode ?? existing.paymentMode;
+    const date = dto.date ? new Date(dto.date) : existing.date;
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.reverseEffects(tx, existing, existing.items, existing.date);
+
+      await tx.saleItem.deleteMany({ where: { saleId: id } });
+      const sale = await tx.sale.update({
+        where: { id },
+        data: {
+          customerId,
+          vehicleId: dto.vehicleId !== undefined ? dto.vehicleId : existing.vehicleId,
+          freight,
+          discount,
+          subTotal,
+          total,
+          paymentMode,
+          date,
+          notes: dto.notes !== undefined ? dto.notes : existing.notes,
+          items: { create: items },
+        },
+        include: { items: true },
+      });
+
+      for (const it of items) {
+        await this.stock.apply(tx, {
+          materialId: it.materialId,
+          direction: StockDirection.OUT,
+          quantity: it.quantity,
+          refType: 'SALE',
+          refId: sale.id,
+          date,
+        });
+      }
+      await this.ledger.post(tx, {
+        partyType: PartyType.CUSTOMER,
+        customerId,
+        description: `Sale bill ${sale.billNo} (edited)`,
+        debit: total,
+        refType: 'SALE',
+        refId: sale.id,
+        date,
+      });
+
+      await this.audit.log(
+        {
+          entityType: 'SALE',
+          entityId: id,
+          action: AuditAction.UPDATE,
+          summary: `Bill ${sale.billNo} edited — total ₹${Number(existing.total)} → ₹${total}`,
+          before: existing,
+          after: sale,
+          userId,
+        },
+        tx,
+      );
+
+      return withSaleStatus({ ...sale, payments: [] as { amount: unknown; direction: PaymentDirection }[] });
+    }, TXN_OPTIONS);
+  }
+
+  /** Delete a sale: reverses its stock/ledger effect and marks it cancelled (kept for the audit trail). */
+  async remove(id: string, userId: string) {
+    const existing = await this.prisma.sale.findUnique({ where: { id }, include: { items: true } });
+    if (!existing) throw new NotFoundException('Sale not found');
+    if (existing.status === TxnStatus.CANCELLED) return existing;
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.reverseEffects(tx, existing, existing.items, existing.date);
+      const sale = await tx.sale.update({ where: { id }, data: { status: TxnStatus.CANCELLED } });
+      await this.audit.log(
+        {
+          entityType: 'SALE',
+          entityId: id,
+          action: AuditAction.DELETE,
+          summary: `Bill ${existing.billNo} deleted — was ₹${Number(existing.total)}`,
+          before: existing,
+          userId,
+        },
+        tx,
+      );
+      return sale;
+    }, TXN_OPTIONS);
   }
 }

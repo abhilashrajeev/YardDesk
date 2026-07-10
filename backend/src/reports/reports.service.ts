@@ -17,7 +17,7 @@ export class ReportsService {
     const { start, end } = this.range(from, to);
     const dateFilter = { date: { gte: start, lt: end } };
 
-    const [sales, purchases, payIn, payOut] = await Promise.all([
+    const [sales, purchases, payIn, payOut, expenses] = await Promise.all([
       this.prisma.sale.aggregate({
         _sum: { total: true },
         _count: true,
@@ -36,6 +36,11 @@ export class ReportsService {
         _sum: { amount: true },
         where: { ...dateFilter, direction: PaymentDirection.OUT },
       }),
+      this.prisma.expense.aggregate({
+        _sum: { amount: true },
+        _count: true,
+        where: { ...dateFilter, deletedAt: null },
+      }),
     ]);
 
     const salesTotal = round2(Number(sales._sum.total ?? 0));
@@ -53,8 +58,30 @@ export class ReportsService {
         collected,
         paidOut: round2(Number(payOut._sum.amount ?? 0)),
       },
+      expenses: {
+        count: expenses._count,
+        total: round2(Number(expenses._sum.amount ?? 0)),
+      },
       creditGiven: round2(salesTotal - collected),
     };
+  }
+
+  /** Expense totals grouped by category, for a date range. */
+  async expenseBreakdown(from: string, to: string) {
+    const { start, end } = this.range(from, to);
+    const expenses = await this.prisma.expense.findMany({
+      where: { date: { gte: start, lt: end }, deletedAt: null },
+    });
+    const map = new Map<string, { category: string; count: number; total: number }>();
+    for (const e of expenses) {
+      const row = map.get(e.category) ?? { category: e.category, count: 0, total: 0 };
+      row.count += 1;
+      row.total += Number(e.amount);
+      map.set(e.category, row);
+    }
+    return [...map.values()]
+      .map((r) => ({ ...r, total: round2(r.total) }))
+      .sort((a, b) => b.total - a.total);
   }
 
   /** Quantity and value sold vs. purchased, per material, over a range. */

@@ -1,13 +1,22 @@
+import { BadRequestException } from '@nestjs/common';
+
 /**
  * Business-day helpers. The yard operates in IST (UTC+5:30) while timestamps
  * are stored in UTC, so a business day 'YYYY-MM-DD' spans
  * [date 00:00 IST, next day 00:00 IST) === [date-1 18:30Z, date 18:30Z).
  */
 const IST = '+05:30';
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** UTC range [start, end) for an IST business date string 'YYYY-MM-DD'. */
 export function istDayRange(dateStr: string): { start: Date; end: Date } {
+  if (!DATE_RE.test(dateStr)) {
+    throw new BadRequestException(`Invalid date "${dateStr}" — expected YYYY-MM-DD`);
+  }
   const start = new Date(`${dateStr}T00:00:00${IST}`);
+  if (Number.isNaN(start.getTime())) {
+    throw new BadRequestException(`Invalid date "${dateStr}" — expected YYYY-MM-DD`);
+  }
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   return { start, end };
 }

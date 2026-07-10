@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate } from '../lib/hooks';
+import { useAuth } from '../auth/AuthContext';
 import type { Customer } from '../types';
 
 interface LedgerEntry {
@@ -14,11 +15,15 @@ interface LedgerEntry {
 
 export default function Customers() {
   const { data: customers, refetch } = useFetch<Customer[]>('/customers');
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [creditLimit, setCreditLimit] = useState(0);
   const [error, setError] = useState('');
   const [ledgerFor, setLedgerFor] = useState<Customer | null>(null);
+  const [editing, setEditing] = useState<Customer | null>(null);
+  const [saving, setSaving] = useState(false);
   const { data: ledger } = useFetch<{ balance: number; entries: LedgerEntry[] }>(
     ledgerFor ? `/accounts/customers/${ledgerFor.id}/ledger` : null,
   );
@@ -34,6 +39,36 @@ export default function Customers() {
       refetch();
     } catch (err) {
       setError(apiError(err));
+    }
+  }
+
+  async function saveEdit() {
+    if (!editing) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api.patch(`/customers/${editing.id}`, {
+        name: editing.name,
+        phone: editing.phone || undefined,
+        address: editing.address || undefined,
+        creditLimit: Number(editing.creditLimit),
+      });
+      setEditing(null);
+      refetch();
+    } catch (err) {
+      setError(apiError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(c: Customer) {
+    if (!confirm(`Delete customer "${c.name}"?`)) return;
+    try {
+      await api.delete(`/customers/${c.id}`);
+      refetch();
+    } catch (err) {
+      alert(apiError(err));
     }
   }
 
@@ -57,7 +92,7 @@ export default function Customers() {
               <input type="number" value={creditLimit || ''} onChange={(e) => setCreditLimit(Number(e.target.value))} />
             </div>
           </div>
-          {error && <div className="err">{error}</div>}
+          {error && !editing && <div className="err">{error}</div>}
           <button className="btn">Add</button>
         </div>
       </form>
@@ -81,7 +116,15 @@ export default function Customers() {
                   <td className="muted">{c.phone ?? '—'}</td>
                   <td className="num">{money(c.creditLimit)}</td>
                   <td className="right">
-                    <button className="btn sm ghost" onClick={() => setLedgerFor(c)}>Ledger</button>
+                    <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                      <button className="btn sm ghost" onClick={() => setLedgerFor(c)}>Ledger</button>
+                      {isAdmin && (
+                        <>
+                          <button className="btn sm ghost" onClick={() => setEditing(c)}>Edit</button>
+                          <button className="btn sm ghost" onClick={() => remove(c)}>Delete</button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -89,6 +132,37 @@ export default function Customers() {
           </table>
         </div>
       </div>
+
+      {editing && (
+        <div className="panel" style={{ marginTop: 16 }}>
+          <h2>Edit Customer</h2>
+          <div className="body">
+            <div className="row">
+              <div>
+                <label>Name</label>
+                <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+              </div>
+              <div>
+                <label>Phone</label>
+                <input value={editing.phone ?? ''} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} />
+              </div>
+              <div>
+                <label>Address</label>
+                <input value={editing.address ?? ''} onChange={(e) => setEditing({ ...editing, address: e.target.value })} />
+              </div>
+              <div>
+                <label>Credit limit</label>
+                <input type="number" value={Number(editing.creditLimit) || ''} onChange={(e) => setEditing({ ...editing, creditLimit: e.target.value })} />
+              </div>
+            </div>
+            {error && <div className="err">{error}</div>}
+            <div className="between" style={{ marginTop: 10 }}>
+              <button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
+              <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {ledgerFor && (
         <div className="panel">

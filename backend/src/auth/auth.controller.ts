@@ -1,6 +1,6 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { LoginDto, ChangePasswordDto } from './dto';
+import { LoginDto, ChangePasswordDto, UpdateProfileDto } from './dto';
 import { Public, CurrentUser, AuthUser } from './decorators';
 import { IsString, IsNotEmpty } from 'class-validator';
 
@@ -36,5 +36,16 @@ export class AuthController {
       dto.currentPassword,
       dto.newPassword,
     );
+  }
+
+  // Self-service profile — any authenticated user, regardless of role.
+  @Get('me')
+  me(@CurrentUser() user: AuthUser) {
+    return this.auth.me(user.userId);
+  }
+
+  @Patch('me')
+  updateProfile(@CurrentUser() user: AuthUser, @Body() dto: UpdateProfileDto) {
+    return this.auth.updateProfile(user.userId, dto);
   }
 }

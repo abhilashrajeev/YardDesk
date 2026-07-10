@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, qty } from '../lib/hooks';
+import { useAuth } from '../auth/AuthContext';
 import type { Material, Unit } from '../types';
 
 export default function Materials() {
   const { data: materials, refetch } = useFetch<Material[]>('/materials');
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const [name, setName] = useState('');
   const [unit, setUnit] = useState<Unit>('CFT');
   const [defaultRate, setDefaultRate] = useState(0);
@@ -38,6 +41,16 @@ export default function Materials() {
   async function saveField(m: Material, field: 'defaultRate' | 'purchaseRate' | 'purchaseRateTon', value: number) {
     try {
       await api.patch(`/materials/${m.id}`, { [field]: value });
+      refetch();
+    } catch (e) {
+      alert(apiError(e));
+    }
+  }
+
+  async function remove(m: Material) {
+    if (!confirm(`Delete material "${m.name}"?`)) return;
+    try {
+      await api.delete(`/materials/${m.id}`);
       refetch();
     } catch (e) {
       alert(apiError(e));
@@ -106,6 +119,7 @@ export default function Materials() {
                 <th className="num">Sale rate</th>
                 <th className="num">Purchase rate (own unit)</th>
                 <th className="num">Purchase rate (₹/ton)</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -158,6 +172,11 @@ export default function Materials() {
                       )
                     ) : (
                       <span className="muted">—</span>
+                    )}
+                  </td>
+                  <td className="right">
+                    {isAdmin && (
+                      <button className="btn sm ghost" onClick={() => remove(m)}>Delete</button>
                     )}
                   </td>
                 </tr>

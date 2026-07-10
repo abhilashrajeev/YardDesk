@@ -19,3 +19,13 @@ export class ChangePasswordDto {
   @MinLength(6)
   newPassword!: string;
 }
+
+export class UpdateProfileDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  phone!: string;
+}

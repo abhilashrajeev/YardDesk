@@ -12,6 +12,18 @@
       "runtimeExecutable": "D:\\Abhi Work\\Claude\\Yard ERP\\web\\start-dev.cmd",
       "runtimeArgs": [],
       "port": 5173
+    },
+    {
+      "name": "mobile",
+      "runtimeExecutable": "D:\\Abhi Work\\Claude\\Yard ERP\\mobile\\start-dev.cmd",
+      "runtimeArgs": [],
+      "port": 8081
+    },
+    {
+      "name": "web-prod-preview",
+      "runtimeExecutable": "D:\\Abhi Work\\Claude\\Yard ERP\\web\\start-preview.cmd",
+      "runtimeArgs": [],
+      "port": 4173
     }
   ]
 }

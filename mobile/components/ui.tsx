@@ -61,6 +61,14 @@ export function Card({ children }: { children: ReactNode }) {
   return <View style={s.card}>{children}</View>;
 }
 
+export function Pill({ text, color }: { text: string; color: string }) {
+  return (
+    <View style={[s.pill, { backgroundColor: color }]}>
+      <Text style={s.pillText}>{text}</Text>
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
   label: { fontSize: 13, color: colors.muted, marginBottom: 4 },
   input: {
@@ -88,4 +96,6 @@ const s = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
   },
+  pill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, alignSelf: 'flex-start' },
+  pillText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 });

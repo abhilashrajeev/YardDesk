@@ -10,7 +10,7 @@ import {
 import { Role } from '@prisma/client';
 import { VehiclesService } from './vehicles.service';
 import { CreateVehicleDto, UpdateVehicleDto } from './dto';
-import { Roles } from '../auth/decorators';
+import { Roles, CurrentUser, AuthUser } from '../auth/decorators';
 
 @Controller('vehicles')
 export class VehiclesController {
@@ -27,19 +27,19 @@ export class VehiclesController {
   }
 
   @Post()
-  create(@Body() dto: CreateVehicleDto) {
-    return this.vehicles.create(dto);
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreateVehicleDto) {
+    return this.vehicles.create(dto, user.userId);
   }
 
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateVehicleDto) {
-    return this.vehicles.update(id, dto);
+  update(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdateVehicleDto) {
+    return this.vehicles.update(id, dto, user.userId);
   }
 
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Delete(':id')
-  deactivate(@Param('id') id: string) {
-    return this.vehicles.deactivate(id);
+  deactivate(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.vehicles.deactivate(id, user.userId);
   }
 }

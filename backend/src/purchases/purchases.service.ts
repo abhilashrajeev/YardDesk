@@ -1,17 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  AuditAction,
   PartyType,
   PaymentDirection,
+  Prisma,
   StockDirection,
   TxnStatus,
+  Unit,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../inventory/stock.service';
 import { LedgerService } from '../accounts/ledger.service';
-import { CreatePurchaseDto } from './dto';
+import { AuditService } from '../audit/audit.service';
+import { CreatePurchaseDto, UpdatePurchaseDto } from './dto';
 import { round2 } from '../common/money';
 import { TXN_OPTIONS } from '../common/db';
 import { convertQty } from '../common/units';
+import { istDayRange } from '../common/date';
 
 type PurchaseStatus = 'PAID' | 'PART_PAID' | 'PENDING' | 'OVERDUE';
 const OVERDUE_AFTER_DAYS = 21;
@@ -48,6 +53,7 @@ export class PurchasesService {
     private prisma: PrismaService,
     private stock: StockService,
     private ledger: LedgerService,
+    private audit: AuditService,
   ) {}
 
   async create(dto: CreatePurchaseDto, userId: string) {
@@ -57,6 +63,13 @@ export class PurchasesService {
         include: { items: true },
       });
       if (existing) return existing; // offline replay — idempotent
+    }
+
+    const vendor = await this.prisma.vendor.findUnique({ where: { id: dto.vendorId } });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+    if (dto.vehicleId) {
+      const vehicle = await this.prisma.vehicle.findUnique({ where: { id: dto.vehicleId } });
+      if (!vehicle) throw new NotFoundException('Vehicle not found');
     }
 
     const materials = await this.prisma.material.findMany({
@@ -163,8 +176,8 @@ export class PurchasesService {
         ...(params.from || params.to
           ? {
               date: {
-                ...(params.from ? { gte: new Date(params.from) } : {}),
-                ...(params.to ? { lte: new Date(params.to) } : {}),
+                ...(params.from ? { gte: istDayRange(params.from).start } : {}),
+                ...(params.to ? { lt: istDayRange(params.to).end } : {}),
               },
             }
           : {}),
@@ -206,5 +219,166 @@ export class PurchasesService {
     });
     if (!purchase) throw new NotFoundException('Purchase not found');
     return withPurchaseStatus(purchase);
+  }
+
+  /**
+   * Reverse a confirmed purchase's stock and ledger effects: stock goes back
+   * OUT (converted from each line's transacted unit), and a compensating
+   * ledger debit cancels out the original vendor credit. Existing payments
+   * against the purchase are left untouched.
+   */
+  private async reverseEffects(
+    tx: Prisma.TransactionClient,
+    purchase: { id: string; invoiceNo: string | null; vendorId: string; total: Prisma.Decimal | number },
+    items: { materialId: string; quantity: Prisma.Decimal | number; unit: Unit | null }[],
+    date: Date,
+  ) {
+    const materials = await tx.material.findMany({
+      where: { id: { in: items.map((i) => i.materialId) } },
+    });
+    const materialById = new Map(materials.map((m) => [m.id, m]));
+
+    for (const it of items) {
+      const material = materialById.get(it.materialId)!;
+      const stockQty = convertQty(Number(it.quantity), it.unit ?? material.unit, material.unit);
+      await this.stock.apply(tx, {
+        materialId: it.materialId,
+        direction: StockDirection.OUT,
+        quantity: stockQty,
+        refType: 'PURCHASE_REVERSAL',
+        refId: purchase.id,
+        date,
+      });
+    }
+    await this.ledger.post(tx, {
+      partyType: PartyType.VENDOR,
+      vendorId: purchase.vendorId,
+      description: `Reversal of purchase ${purchase.invoiceNo ?? purchase.id}`,
+      debit: Number(purchase.total),
+      refType: 'PURCHASE_REVERSAL',
+      refId: purchase.id,
+      date,
+    });
+  }
+
+  /** Edit a purchase: reverses its old stock/ledger effect, then reapplies with the new values. */
+  async update(id: string, dto: UpdatePurchaseDto, userId: string) {
+    const existing = await this.prisma.purchase.findUnique({ where: { id }, include: { items: true } });
+    if (!existing) throw new NotFoundException('Purchase not found');
+    if (existing.status === TxnStatus.CANCELLED) {
+      throw new BadRequestException('This purchase was deleted and cannot be edited.');
+    }
+
+    const vendorId = dto.vendorId ?? existing.vendorId;
+    if (dto.vendorId) {
+      const vendor = await this.prisma.vendor.findUnique({ where: { id: dto.vendorId } });
+      if (!vendor) throw new NotFoundException('Vendor not found');
+    }
+    if (dto.vehicleId) {
+      const vehicle = await this.prisma.vehicle.findUnique({ where: { id: dto.vehicleId } });
+      if (!vehicle) throw new NotFoundException('Vehicle not found');
+    }
+    const rawItems = dto.items ?? existing.items;
+    const materials = await this.prisma.material.findMany({
+      where: { id: { in: rawItems.map((i) => i.materialId) } },
+    });
+    const materialById = new Map(materials.map((m) => [m.id, m]));
+    const items = rawItems.map((i) => {
+      const material = materialById.get(i.materialId);
+      if (!material) throw new NotFoundException(`Material ${i.materialId} not found`);
+      return {
+        materialId: i.materialId,
+        unit: i.unit ?? material.unit,
+        quantity: Number(i.quantity),
+        rate: Number(i.rate),
+        amount: round2(Number(i.quantity) * Number(i.rate)),
+      };
+    });
+    const subTotal = round2(items.reduce((s, i) => s + i.amount, 0));
+    const freight = dto.freight !== undefined ? round2(dto.freight) : Number(existing.freight);
+    const total = round2(subTotal + freight);
+    const date = dto.date ? new Date(dto.date) : existing.date;
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.reverseEffects(tx, existing, existing.items, existing.date);
+
+      await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
+      const purchase = await tx.purchase.update({
+        where: { id },
+        data: {
+          vendorId,
+          vehicleId: dto.vehicleId !== undefined ? dto.vehicleId : existing.vehicleId,
+          invoiceNo: dto.invoiceNo !== undefined ? dto.invoiceNo : existing.invoiceNo,
+          freight,
+          subTotal,
+          total,
+          date,
+          notes: dto.notes !== undefined ? dto.notes : existing.notes,
+          items: { create: items },
+        },
+        include: { items: true },
+      });
+
+      for (const it of items) {
+        const material = materialById.get(it.materialId)!;
+        const stockQty = convertQty(it.quantity, it.unit, material.unit);
+        await this.stock.apply(tx, {
+          materialId: it.materialId,
+          direction: StockDirection.IN,
+          quantity: stockQty,
+          refType: 'PURCHASE',
+          refId: purchase.id,
+          date,
+        });
+      }
+      await this.ledger.post(tx, {
+        partyType: PartyType.VENDOR,
+        vendorId,
+        description: `Purchase ${purchase.invoiceNo ?? purchase.id} (edited)`,
+        credit: total,
+        refType: 'PURCHASE',
+        refId: purchase.id,
+        date,
+      });
+
+      await this.audit.log(
+        {
+          entityType: 'PURCHASE',
+          entityId: id,
+          action: AuditAction.UPDATE,
+          summary: `Purchase ${purchase.invoiceNo ?? purchase.id} edited — total ₹${Number(existing.total)} → ₹${total}`,
+          before: existing,
+          after: purchase,
+          userId,
+        },
+        tx,
+      );
+
+      return withPurchaseStatus({ ...purchase, payments: [] as { amount: unknown; direction: PaymentDirection }[] });
+    }, TXN_OPTIONS);
+  }
+
+  /** Delete a purchase: reverses its stock/ledger effect and marks it cancelled (kept for the audit trail). */
+  async remove(id: string, userId: string) {
+    const existing = await this.prisma.purchase.findUnique({ where: { id }, include: { items: true } });
+    if (!existing) throw new NotFoundException('Purchase not found');
+    if (existing.status === TxnStatus.CANCELLED) return existing;
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.reverseEffects(tx, existing, existing.items, existing.date);
+      const purchase = await tx.purchase.update({ where: { id }, data: { status: TxnStatus.CANCELLED } });
+      await this.audit.log(
+        {
+          entityType: 'PURCHASE',
+          entityId: id,
+          action: AuditAction.DELETE,
+          summary: `Purchase ${existing.invoiceNo ?? existing.id} deleted — was ₹${Number(existing.total)}`,
+          before: existing,
+          userId,
+        },
+        tx,
+      );
+      return purchase;
+    }, TXN_OPTIONS);
   }
 }

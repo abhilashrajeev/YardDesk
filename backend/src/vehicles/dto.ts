@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsNumber, Min } from 'class-validator';
 
 export class CreateVehicleDto {
   @IsString()
@@ -6,6 +6,9 @@ export class CreateVehicleDto {
   number!: string;
 
   @IsOptional() @IsString() type?: string;
+  @IsOptional() @IsString() ownerName?: string;
+  @IsOptional() @IsString() ownerPhone?: string;
+  @IsOptional() @IsNumber() @Min(0) capacity?: number;
   @IsOptional() @IsString() driverName?: string;
   @IsOptional() @IsString() driverPhone?: string;
 }
@@ -13,6 +16,9 @@ export class CreateVehicleDto {
 export class UpdateVehicleDto {
   @IsOptional() @IsString() number?: string;
   @IsOptional() @IsString() type?: string;
+  @IsOptional() @IsString() ownerName?: string;
+  @IsOptional() @IsString() ownerPhone?: string;
+  @IsOptional() @IsNumber() @Min(0) capacity?: number;
   @IsOptional() @IsString() driverName?: string;
   @IsOptional() @IsString() driverPhone?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;

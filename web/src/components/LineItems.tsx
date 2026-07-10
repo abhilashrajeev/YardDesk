@@ -13,6 +13,13 @@ export default function LineItems({ materials, lines, onChange }: Props) {
     next[i] = { ...next[i], ...patch };
     onChange(next);
   }
+  /** Typing an amount directly back-solves the rate for the current quantity. */
+  function setAmount(i: number, amountStr: string) {
+    const amount = Number(amountStr);
+    const qty = lines[i].quantity;
+    if (!qty || Number.isNaN(amount)) return;
+    update(i, { rate: amount / qty });
+  }
   function add() {
     onChange([...lines, { materialId: materials[0]?.id ?? '', quantity: 0, rate: 0 }]);
   }
@@ -67,7 +74,16 @@ export default function LineItems({ materials, lines, onChange }: Props) {
                     style={{ textAlign: 'right' }}
                   />
                 </td>
-                <td className="num">{money(l.quantity * l.rate)}</td>
+                <td className="num">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={(l.quantity * l.rate) || ''}
+                    title={l.quantity ? 'Type an amount to back-solve the rate' : 'Enter a quantity first'}
+                    onChange={(e) => setAmount(i, e.target.value)}
+                    style={{ textAlign: 'right' }}
+                  />
+                </td>
                 <td>
                   <button type="button" className="btn sm gray" onClick={() => remove(i)}>
                     ✕

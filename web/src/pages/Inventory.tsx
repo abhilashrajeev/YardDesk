@@ -17,9 +17,10 @@ interface Movement {
 export default function Inventory() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  const canAdjust = isAdmin && (user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes('STOCK'));
   const { data: stock, refetch } = useFetch<Material[]>('/inventory');
   const [selected, setSelected] = useState<string | null>(null);
-  const { data: movements } = useFetch<Movement[]>(
+  const { data: movements, refetch: refetchMovements } = useFetch<Movement[]>(
     selected ? `/inventory/movements?materialId=${selected}` : null,
   );
 
@@ -57,6 +58,17 @@ export default function Inventory() {
     }
   }
 
+  async function undoAdjustment(movementId: string) {
+    if (!confirm('Undo this adjustment? A compensating entry will be posted.')) return;
+    try {
+      await api.post(`/inventory/adjust/${movementId}/undo`);
+      refetch();
+      refetchMovements();
+    } catch (e) {
+      alert(apiError(e));
+    }
+  }
+
   return (
     <>
       <h2 style={{ marginTop: 0 }}>Stock Monitoring</h2>
@@ -83,7 +95,7 @@ export default function Inventory() {
                     </td>
                     <td className="right">
                       <button className="btn sm ghost" onClick={() => setSelected(m.id)}>History</button>
-                      {isAdmin && (
+                      {canAdjust && (
                         <button className="btn sm gray" style={{ marginLeft: 6 }} onClick={() => openAdjust(m.id)}>
                           Adjust
                         </button>
@@ -135,6 +147,7 @@ export default function Inventory() {
                   <th>Ref</th>
                   <th className="num">Qty</th>
                   <th className="num">Balance</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -150,6 +163,11 @@ export default function Inventory() {
                     <td className="muted">{m.refType}</td>
                     <td className="num">{qty(m.quantity)}</td>
                     <td className="num">{qty(m.balance)}</td>
+                    <td className="right">
+                      {canAdjust && m.refType === 'ADJUSTMENT' && (
+                        <button className="btn sm ghost" onClick={() => undoAdjustment(m.id)}>Undo</button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

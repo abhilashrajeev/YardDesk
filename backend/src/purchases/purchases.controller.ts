@@ -1,12 +1,14 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Permission } from '@prisma/client';
 import { PurchasesService } from './purchases.service';
-import { CreatePurchaseDto } from './dto';
-import { CurrentUser, AuthUser } from '../auth/decorators';
+import { CreatePurchaseDto, UpdatePurchaseDto } from './dto';
+import { CurrentUser, AuthUser, RequirePermission } from '../auth/decorators';
 
 @Controller('purchases')
 export class PurchasesController {
   constructor(private purchases: PurchasesService) {}
 
+  @RequirePermission(Permission.PURCHASES)
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreatePurchaseDto) {
     return this.purchases.create(dto, user.userId);
@@ -30,5 +32,15 @@ export class PurchasesController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.purchases.findOne(id);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdatePurchaseDto) {
+    return this.purchases.update(id, dto, user.userId);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.purchases.remove(id, user.userId);
   }
 }

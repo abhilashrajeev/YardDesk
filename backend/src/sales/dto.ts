@@ -74,6 +74,25 @@ export class CreateSaleDto {
   notes?: string;
 }
 
+/** All fields optional — only what's provided gets changed. Items, if provided, fully replace the line items. */
+export class UpdateSaleDto {
+  @IsOptional() @IsString() customerId?: string;
+  @IsOptional() @IsString() vehicleId?: string;
+  @IsOptional() @IsNumber() @Min(0) freight?: number;
+  @IsOptional() @IsNumber() @Min(0) discount?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => SaleItemDto)
+  items?: SaleItemDto[];
+
+  @IsOptional() @IsEnum(PaymentMode) paymentMode?: PaymentMode;
+  @IsOptional() @IsDateString() date?: string;
+  @IsOptional() @IsString() notes?: string;
+}
+
 export class CreatePassDto {
   @IsOptional()
   @IsString()

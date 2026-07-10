@@ -1,22 +1,16 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate } from '../lib/hooks';
-import type { Customer, Vendor, PaymentMode } from '../types';
-
-interface PaymentRow {
-  id: string;
-  date: string;
-  direction: 'IN' | 'OUT';
-  mode: PaymentMode;
-  amount: string;
-  customer?: { name: string } | null;
-  vendor?: { name: string } | null;
-}
+import { useAuth } from '../auth/AuthContext';
+import type { Customer, Vendor, Payment, PaymentMode } from '../types';
 
 export default function Payments() {
-  const { data: payments, refetch } = useFetch<PaymentRow[]>('/accounts/payments');
+  const { data: payments, refetch } = useFetch<Payment[]>('/accounts/payments');
   const { data: customers } = useFetch<Customer[]>('/customers');
   const { data: vendors } = useFetch<Vendor[]>('/vendors');
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  const canCreate = user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes('PAYMENTS');
 
   const [partyType, setPartyType] = useState<'CUSTOMER' | 'VENDOR'>('CUSTOMER');
   const [partyId, setPartyId] = useState('');
@@ -26,6 +20,7 @@ export default function Payments() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<Payment | null>(null);
 
   const parties = partyType === 'CUSTOMER' ? customers : vendors;
 
@@ -48,6 +43,8 @@ export default function Payments() {
         reference: reference || undefined,
       });
       setMsg('Payment recorded.');
+      setPartyId('');
+      setMode('CASH');
       setAmount(0);
       setReference('');
       refetch();
@@ -58,16 +55,46 @@ export default function Payments() {
     }
   }
 
+  async function saveEdit() {
+    if (!editing) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api.patch(`/accounts/payments/${editing.id}`, {
+        mode: editing.mode,
+        amount: Number(editing.amount),
+        reference: editing.reference || undefined,
+      });
+      setEditing(null);
+      refetch();
+    } catch (err) {
+      setError(apiError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(p: Payment) {
+    if (!confirm('Delete (void) this payment? Its ledger effect will be reversed.')) return;
+    try {
+      await api.delete(`/accounts/payments/${p.id}`);
+      refetch();
+    } catch (err) {
+      alert(apiError(err));
+    }
+  }
+
   return (
     <>
       <h2 style={{ marginTop: 0 }}>Payments</h2>
+      {canCreate && (
       <form className="panel" onSubmit={submit}>
         <h2>Record Payment</h2>
         <div className="body">
           <div className="row">
             <div>
               <label>Party type</label>
-              <select value={partyType} onChange={(e) => { setPartyType(e.target.value as any); setPartyId(''); }}>
+              <select value={partyType} onChange={(e) => { setPartyType(e.target.value as 'CUSTOMER' | 'VENDOR'); setPartyId(''); }}>
                 <option value="CUSTOMER">Customer (money in)</option>
                 <option value="VENDOR">Vendor (money out)</option>
               </select>
@@ -97,11 +124,12 @@ export default function Payments() {
               <input value={reference} onChange={(e) => setReference(e.target.value)} />
             </div>
           </div>
-          {error && <div className="err">{error}</div>}
+          {error && !editing && <div className="err">{error}</div>}
           {msg && <div className="ok">{msg}</div>}
           <button className="btn" disabled={saving}>{saving ? 'Saving…' : 'Record Payment'}</button>
         </div>
       </form>
+      )}
 
       <div className="panel">
         <h2>Recent Payments</h2>
@@ -114,11 +142,12 @@ export default function Payments() {
                 <th>Direction</th>
                 <th>Mode</th>
                 <th className="num">Amount</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {payments?.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.id} style={p.voided ? { opacity: 0.5 } : undefined}>
                   <td>{fmtDate(p.date)}</td>
                   <td>{p.customer?.name ?? p.vendor?.name}</td>
                   <td>
@@ -126,12 +155,58 @@ export default function Payments() {
                   </td>
                   <td>{p.mode}</td>
                   <td className="num">{money(p.amount)}</td>
+                  <td className="right">
+                    {p.voided ? (
+                      <span className="pill neg">Voided</span>
+                    ) : isAdmin ? (
+                      <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                        <button className="btn sm ghost" onClick={() => setEditing(p)}>Edit</button>
+                        <button className="btn sm ghost" onClick={() => remove(p)}>Delete</button>
+                      </div>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
+              {payments?.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="muted" style={{ padding: 16 }}>No payments yet.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {editing && (
+        <div className="panel" style={{ marginTop: 16 }}>
+          <h2>Edit Payment</h2>
+          <div className="body">
+            <div className="row">
+              <div>
+                <label>Mode</label>
+                <select value={editing.mode} onChange={(e) => setEditing({ ...editing, mode: e.target.value as PaymentMode })}>
+                  <option value="CASH">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="BANK">Bank</option>
+                </select>
+              </div>
+              <div>
+                <label>Amount</label>
+                <input type="number" value={Number(editing.amount) || ''} onChange={(e) => setEditing({ ...editing, amount: e.target.value })} />
+              </div>
+              <div>
+                <label>Reference</label>
+                <input value={editing.reference ?? ''} onChange={(e) => setEditing({ ...editing, reference: e.target.value })} />
+              </div>
+            </div>
+            {error && <div className="err">{error}</div>}
+            <div className="between" style={{ marginTop: 10 }}>
+              <button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
+              <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
