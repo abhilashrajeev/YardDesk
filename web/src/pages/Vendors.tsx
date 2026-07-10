@@ -19,6 +19,7 @@ export default function Vendors() {
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [openingBalance, setOpeningBalance] = useState(0);
   const [error, setError] = useState('');
   const [ledgerFor, setLedgerFor] = useState<Vendor | null>(null);
   const [editing, setEditing] = useState<Vendor | null>(null);
@@ -31,9 +32,14 @@ export default function Vendors() {
     e.preventDefault();
     setError('');
     try {
-      await api.post('/vendors', { name, phone: phone || undefined });
+      await api.post('/vendors', {
+        name,
+        phone: phone || undefined,
+        openingBalance: Number(openingBalance) || undefined,
+      });
       setName('');
       setPhone('');
+      setOpeningBalance(0);
       refetch();
     } catch (err) {
       setError(apiError(err));
@@ -48,6 +54,7 @@ export default function Vendors() {
       await api.patch(`/vendors/${editing.id}`, {
         name: editing.name,
         phone: editing.phone || undefined,
+        openingBalance: Number(editing.openingBalance),
       });
       setEditing(null);
       refetch();
@@ -82,6 +89,15 @@ export default function Vendors() {
             <div>
               <label>Phone</label>
               <input value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </div>
+            <div>
+              <label>Opening balance (optional)</label>
+              <input
+                type="number"
+                value={openingBalance || ''}
+                onChange={(e) => setOpeningBalance(Number(e.target.value))}
+                placeholder="Amount you already owe them"
+              />
             </div>
           </div>
           {error && !editing && <div className="err">{error}</div>}
@@ -135,6 +151,14 @@ export default function Vendors() {
               <div>
                 <label>Phone</label>
                 <input value={editing.phone ?? ''} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} />
+              </div>
+              <div>
+                <label>Opening balance</label>
+                <input
+                  type="number"
+                  value={Number(editing.openingBalance) || ''}
+                  onChange={(e) => setEditing({ ...editing, openingBalance: e.target.value })}
+                />
               </div>
             </div>
             {error && <div className="err">{error}</div>}

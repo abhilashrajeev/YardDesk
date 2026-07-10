@@ -20,6 +20,7 @@ export default function Customers() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [creditLimit, setCreditLimit] = useState(0);
+  const [openingBalance, setOpeningBalance] = useState(0);
   const [error, setError] = useState('');
   const [ledgerFor, setLedgerFor] = useState<Customer | null>(null);
   const [editing, setEditing] = useState<Customer | null>(null);
@@ -32,10 +33,16 @@ export default function Customers() {
     e.preventDefault();
     setError('');
     try {
-      await api.post('/customers', { name, phone: phone || undefined, creditLimit: Number(creditLimit) });
+      await api.post('/customers', {
+        name,
+        phone: phone || undefined,
+        creditLimit: Number(creditLimit),
+        openingBalance: Number(openingBalance) || undefined,
+      });
       setName('');
       setPhone('');
       setCreditLimit(0);
+      setOpeningBalance(0);
       refetch();
     } catch (err) {
       setError(apiError(err));
@@ -52,6 +59,7 @@ export default function Customers() {
         phone: editing.phone || undefined,
         address: editing.address || undefined,
         creditLimit: Number(editing.creditLimit),
+        openingBalance: Number(editing.openingBalance),
       });
       setEditing(null);
       refetch();
@@ -90,6 +98,15 @@ export default function Customers() {
             <div>
               <label>Credit limit</label>
               <input type="number" value={creditLimit || ''} onChange={(e) => setCreditLimit(Number(e.target.value))} />
+            </div>
+            <div>
+              <label>Opening balance (optional)</label>
+              <input
+                type="number"
+                value={openingBalance || ''}
+                onChange={(e) => setOpeningBalance(Number(e.target.value))}
+                placeholder="Amount they already owe you"
+              />
             </div>
           </div>
           {error && !editing && <div className="err">{error}</div>}
@@ -153,6 +170,14 @@ export default function Customers() {
               <div>
                 <label>Credit limit</label>
                 <input type="number" value={Number(editing.creditLimit) || ''} onChange={(e) => setEditing({ ...editing, creditLimit: e.target.value })} />
+              </div>
+              <div>
+                <label>Opening balance</label>
+                <input
+                  type="number"
+                  value={Number(editing.openingBalance) || ''}
+                  onChange={(e) => setEditing({ ...editing, openingBalance: e.target.value })}
+                />
               </div>
             </div>
             {error && <div className="err">{error}</div>}
