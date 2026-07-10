@@ -2,13 +2,13 @@ services:
   - type: web
     name: yarddesk-api
     runtime: node
-    plan: starter
+    plan: free
     region: singapore
     rootDir: backend
-    buildCommand: npm install && npx prisma generate && npm run build
+    # Free tier doesn't support preDeployCommand, so the migration runs as part of the
+    # build instead — still safe/non-interactive (never `migrate dev` in production).
+    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy && npm run build
     startCommand: npm run start:prod
-    # Runs once before each deploy — safe, non-interactive schema sync (never `migrate dev`).
-    preDeployCommand: npx prisma migrate deploy
     envVars:
       - key: DATABASE_URL
         sync: false
