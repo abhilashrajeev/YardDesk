@@ -107,7 +107,12 @@ h1, h2, h3 { letter-spacing: -0.01em; }
   display: flex; align-items: center; justify-content: space-between; padding: 0 24px;
   position: sticky; top: 0; z-index: 10;
 }
-.topbar .page-title { font-size: 16px; font-weight: 700; }
+.topbar .page-title { font-size: 16px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Flex items don't shrink below their content's intrinsic width by default — a long
+   page title (e.g. "Outstanding & Pending") pushes the right-side icons off-screen on
+   narrow phones unless the title's container is explicitly allowed to shrink/truncate. */
+.topbar > .flex:first-child { min-width: 0; flex: 1 1 auto; }
+.topbar > .flex:last-child { flex-shrink: 0; }
 .content { padding: 26px 28px; max-width: 1280px; width: 100%; }
 
 .icon-btn {
