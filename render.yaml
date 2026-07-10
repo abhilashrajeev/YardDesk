@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: yarddesk-api
+    runtime: node
+    plan: starter
+    region: singapore
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm run start:prod
+    # Runs once before each deploy — safe, non-interactive schema sync (never `migrate dev`).
+    preDeployCommand: npx prisma migrate deploy
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 30d
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
