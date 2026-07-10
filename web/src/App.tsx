@@ -19,6 +19,7 @@ import Vehicles from './pages/Vehicles';
 import AuditLog from './pages/AuditLog';
 import Users from './pages/Users';
 import Profile from './pages/Profile';
+import UpdatePrompt from './components/UpdatePrompt';
 
 function Protected({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
@@ -32,6 +33,8 @@ function SuperAdminOnly({ children }: { children: JSX.Element }) {
 
 export default function App() {
   return (
+    <>
+    <UpdatePrompt />
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route
@@ -62,5 +65,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }
