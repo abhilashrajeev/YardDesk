@@ -4,6 +4,14 @@ The database (Neon Postgres) is already cloud-hosted — deploying the app never
 your data. These steps stand up the backend (Render) and frontend (Vercel) so you can
 test against a live URL.
 
+## Live URLs
+
+- **App:** https://yard-desk-gamma.vercel.app/
+- **API:** https://yarddesk-api.onrender.com/api (health check: `/api/health`)
+
+Both are on free tiers. The API spins down after inactivity — the first request after
+a quiet period takes 30-60s to wake back up; that's expected, not an error.
+
 ## 1. Backend — Render
 
 1. Go to [render.com](https://render.com) → New → Blueprint, connect the
@@ -16,8 +24,9 @@ test against a live URL.
      Neon dashboard → Branches → Create branch).
    - `JWT_SECRET` / `JWT_REFRESH_SECRET` — the blueprint auto-generates these; leave
      as-is unless you want to set your own.
-3. Deploy. Render runs `npx prisma migrate deploy` automatically before each deploy
-   (see `preDeployCommand` in `render.yaml`) — safe, non-destructive, non-interactive.
+3. Deploy. `npx prisma migrate deploy` runs as part of the build command in
+   `render.yaml` — safe, non-destructive, non-interactive (free tier doesn't support
+   a separate `preDeployCommand`, so it's folded into the build instead).
 4. First deploy only: if this is a fresh database (no existing owner account), run the
    seed script once, pointed at the production `DATABASE_URL`:
    ```
