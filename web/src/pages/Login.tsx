@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { apiError } from '../api/client';
+import { Icon } from '../components/Icon';
 
 export default function Login() {
   const { login, loading } = useAuth();
   const nav = useNavigate();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [forgotMsg, setForgotMsg] = useState('');
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,54 +27,69 @@ export default function Login() {
   return (
     <div className="login-wrap">
       <div className="login-hero">
-        <div className="brand">
-          <div className="brand-mark">Y</div>
-          <div className="brand-name">
-            YardDesk
-            <small>Smart ERP for Building Material Dealers</small>
-          </div>
-        </div>
-        <div>
-          <h1>
-            Run the yard,
-            <br />
-            not the paperwork.
-          </h1>
-          <p>
-            Sales, purchases, stock, gate passes and ledgers — one register, updated the
-            moment a load leaves the gate.
-          </p>
-        </div>
-        <div className="bars" aria-hidden="true">
-          <i style={{ height: '34%' }} />
-          <i style={{ height: '52%' }} />
-          <i style={{ height: '71%' }} />
-          <i style={{ height: '100%' }} />
-          <i style={{ height: '80%' }} />
-        </div>
-        <div className="feats">
-          <div className="feat"><span className="dot" /> Real-time stock &amp; day-close</div>
-          <div className="feat"><span className="dot" /> Customer &amp; vendor ledgers</div>
-          <div className="feat"><span className="dot" /> Payment follow-up reminders</div>
-        </div>
+        <img src="/brand/logo-full.png" alt="YardDesk" className="login-hero-logo" />
       </div>
 
       <div className="login-form-side">
+        <div className="login-mobile-logo">
+          <img src="/brand/logo-full.png" alt="YardDesk" />
+        </div>
         <form className="login-card" onSubmit={submit}>
           <h2>Welcome back</h2>
-          <p className="lead">Sign in to Devi Traders</p>
+          <p className="lead">Sign in to your account</p>
+
           <div style={{ marginBottom: 14 }}>
             <label>Phone</label>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="9999999999" autoFocus />
+            <div className="input-icon">
+              <Icon name="phone" size={17} />
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Enter your phone number"
+                autoFocus
+              />
+            </div>
           </div>
-          <div style={{ marginBottom: 20 }}>
+
+          <div style={{ marginBottom: 8 }}>
             <label>Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+            <div className="input-icon">
+              <Icon name="lock" size={17} />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                data-pw
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+              />
+              <button
+                type="button"
+                className="toggle-visibility"
+                onClick={() => setShowPassword((v) => !v)}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                <Icon name={showPassword ? 'eye-off' : 'eye'} size={17} />
+              </button>
+            </div>
           </div>
+
+          <button
+            type="button"
+            className="forgot-link"
+            onClick={() => setForgotMsg('Contact your administrator to reset your password.')}
+          >
+            Forgot password?
+          </button>
+          {forgotMsg && <div className="muted" style={{ fontSize: 12.5, marginTop: -12, marginBottom: 16 }}>{forgotMsg}</div>}
+
           {error && <div className="err">{error}</div>}
           <button className="btn" style={{ width: '100%', padding: '12px' }} disabled={loading}>
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
+
+          <div className="login-secure">
+            <Icon name="shield" size={14} /> Secure login
+          </div>
         </form>
       </div>
     </div>

@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, money, qty, fmtDate } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
-import Modal from './Modal';
+import DetailPanel from './DetailPanel';
 import LineItems from './LineItems';
 import CustomerPicker from './CustomerPicker';
-import type { Sale, Customer, Material, LineInput, PaymentMode } from '../types';
+import VehiclePicker, { type UsualVehicle } from './VehiclePicker';
+import type { Sale, Customer, Material, Vehicle, CustomerVehicle, LineInput, PaymentMode } from '../types';
 
 export default function SaleDetail({
   id,
@@ -60,7 +61,7 @@ export default function SaleDetail({
   }
 
   return (
-    <Modal title={`Bill #${sale.billNo}`} onClose={onClose}>
+    <DetailPanel title={`Bill #${sale.billNo}`} onClose={onClose}>
       <div className="row">
         <div>
           <label>Customer</label>
@@ -69,6 +70,10 @@ export default function SaleDetail({
         <div>
           <label>Date</label>
           <div>{fmtDate(sale.date)}</div>
+        </div>
+        <div>
+          <label>Vehicle</label>
+          <div>{sale.vehicle?.number ?? '—'}</div>
         </div>
         <div>
           <label>Payment mode</label>
@@ -144,7 +149,7 @@ export default function SaleDetail({
           </div>
         )}
       </div>
-    </Modal>
+    </DetailPanel>
   );
 }
 
@@ -161,8 +166,11 @@ function EditSale({
 }) {
   const { data: customers, setData: setCustomers } = useFetch<Customer[]>('/customers');
   const { data: materials } = useFetch<Material[]>('/inventory');
+  const { data: vehicles } = useFetch<Vehicle[]>('/vehicles');
 
   const [customerId, setCustomerId] = useState(sale.customerId ?? '');
+  const [vehicleNumber, setVehicleNumber] = useState(sale.vehicle?.number ?? '');
+  const [customerVehicles, setCustomerVehicles] = useState<CustomerVehicle[]>([]);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>(sale.paymentMode);
   const [freight, setFreight] = useState(Number(sale.freight ?? 0));
   const [discount, setDiscount] = useState(Number(sale.discount ?? 0));
@@ -179,6 +187,39 @@ function EditSale({
   const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
   const total = subTotal + Number(freight) - Number(discount);
 
+  useEffect(() => {
+    if (!customerId) {
+      setCustomerVehicles([]);
+      return;
+    }
+    let cancelled = false;
+    api.get<CustomerVehicle[]>(`/customers/${customerId}/vehicles`).then(({ data }) => {
+      if (!cancelled) setCustomerVehicles(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId]);
+
+  const usualVehicles: UsualVehicle[] = customerVehicles.map((cv) => ({
+    id: cv.id,
+    vehicleId: cv.vehicleId,
+    vehicle: cv.vehicle,
+    usualLabel: cv.extraBodyCft
+      ? `${cv.quantityCft} cft + ${cv.extraBodyCft} cft extra body`
+      : `${cv.quantityCft} cft`,
+    quantity: Number(cv.quantityCft) + Number(cv.extraBodyCft ?? 0),
+  }));
+
+  async function resolveVehicleId(): Promise<string | undefined> {
+    const num = vehicleNumber.trim();
+    if (!num) return undefined;
+    const existing = vehicles?.find((v) => v.number.toLowerCase() === num.toLowerCase());
+    if (existing) return existing.id;
+    const { data } = await api.post('/vehicles', { number: num });
+    return data.id;
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -186,8 +227,10 @@ function EditSale({
     if (!items.length) return setError('Add at least one line with quantity.');
     setSaving(true);
     try {
+      const vehicleId = await resolveVehicleId();
       await api.patch(`/sales/${sale.id}`, {
         customerId,
+        vehicleId,
         paymentMode,
         freight: Number(freight),
         discount: Number(discount),
@@ -201,10 +244,10 @@ function EditSale({
     }
   }
 
-  if (!customers || !materials) return null;
+  if (!customers || !materials || !vehicles) return null;
 
   return (
-    <Modal title={`Edit Bill #${sale.billNo}`} onClose={onClose}>
+    <DetailPanel title={`Edit Bill #${sale.billNo}`} onClose={onClose}>
       <form onSubmit={submit}>
         <div className="row">
           <div>
@@ -214,6 +257,16 @@ function EditSale({
               value={customerId}
               onChange={setCustomerId}
               onCreated={(c) => setCustomers([...(customers ?? []), c])}
+            />
+          </div>
+          <div>
+            <label>Vehicle number (optional)</label>
+            <VehiclePicker
+              usualVehicles={usualVehicles}
+              allVehicles={vehicles}
+              value={vehicleNumber}
+              onChange={setVehicleNumber}
+              groupLabel="This customer's usual trucks"
             />
           </div>
           <div>
@@ -251,6 +304,6 @@ function EditSale({
           </div>
         </div>
       </form>
-    </Modal>
+    </DetailPanel>
   );
 }

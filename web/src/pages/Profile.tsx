@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { titleCase } from '../lib/hooks';
 
 export default function Profile() {
   const { user, updateUser } = useAuth();
@@ -85,7 +86,7 @@ export default function Profile() {
             </div>
             <div>
               <label>Role</label>
-              <input value={user?.role.replace('_', ' ') ?? ''} disabled />
+              <input value={user ? titleCase(user.role.replace('_', ' ')) : ''} disabled />
             </div>
           </div>
           {profileErr && <div className="err">{profileErr}</div>}

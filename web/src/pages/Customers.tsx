@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
-import type { Customer } from '../types';
+import VehicleNumberInput from '../components/VehicleNumberInput';
+import type { Customer, CustomerVehicle } from '../types';
 
 interface LedgerEntry {
   id: string;
@@ -28,6 +29,57 @@ export default function Customers() {
   const { data: ledger } = useFetch<{ balance: number; entries: LedgerEntry[] }>(
     ledgerFor ? `/accounts/customers/${ledgerFor.id}/ledger` : null,
   );
+
+  const [vehiclesFor, setVehiclesFor] = useState<Customer | null>(null);
+  const { data: customerVehicles, refetch: refetchCustomerVehicles } = useFetch<CustomerVehicle[]>(
+    vehiclesFor ? `/customers/${vehiclesFor.id}/vehicles` : null,
+  );
+  const [newVehicleNumber, setNewVehicleNumber] = useState('');
+  const [newVehicleQty, setNewVehicleQty] = useState(0);
+  const [newVehicleExtraBody, setNewVehicleExtraBody] = useState(0);
+  const [vehicleError, setVehicleError] = useState('');
+
+  async function addVehicle(e: React.FormEvent) {
+    e.preventDefault();
+    if (!vehiclesFor) return;
+    setVehicleError('');
+    if (!newVehicleNumber.trim()) return setVehicleError('Enter a vehicle number.');
+    if (!newVehicleQty || newVehicleQty <= 0) return setVehicleError('Enter a capacity (cft).');
+    try {
+      await api.post(`/customers/${vehiclesFor.id}/vehicles`, {
+        vehicleNumber: newVehicleNumber.trim(),
+        quantityCft: Number(newVehicleQty),
+        extraBodyCft: newVehicleExtraBody > 0 ? Number(newVehicleExtraBody) : undefined,
+      });
+      setNewVehicleNumber('');
+      setNewVehicleQty(0);
+      setNewVehicleExtraBody(0);
+      refetchCustomerVehicles();
+    } catch (err) {
+      setVehicleError(apiError(err));
+    }
+  }
+
+  async function updateVehicleField(cv: CustomerVehicle, field: 'quantityCft' | 'extraBodyCft', value: number) {
+    if (!vehiclesFor) return;
+    try {
+      await api.patch(`/customers/${vehiclesFor.id}/vehicles/${cv.id}`, { [field]: value });
+      refetchCustomerVehicles();
+    } catch (err) {
+      alert(apiError(err));
+    }
+  }
+
+  async function removeVehicle(cv: CustomerVehicle) {
+    if (!vehiclesFor) return;
+    if (!confirm(`Remove ${cv.vehicle.number} from this customer's usual vehicles?`)) return;
+    try {
+      await api.delete(`/customers/${vehiclesFor.id}/vehicles/${cv.id}`);
+      refetchCustomerVehicles();
+    } catch (err) {
+      alert(apiError(err));
+    }
+  }
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
@@ -135,6 +187,7 @@ export default function Customers() {
                   <td className="right">
                     <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
                       <button className="btn sm ghost" onClick={() => setLedgerFor(c)}>Ledger</button>
+                      <button className="btn sm ghost" onClick={() => setVehiclesFor(c)}>Vehicles</button>
                       {isAdmin && (
                         <>
                           <button className="btn sm ghost" onClick={() => setEditing(c)}>Edit</button>
@@ -221,6 +274,94 @@ export default function Customers() {
                     <td className="num">{money(e.balance)}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {vehiclesFor && (
+        <div className="panel">
+          <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+            <strong>{vehiclesFor.name} — Usual Vehicles</strong>
+            <button className="btn sm ghost" onClick={() => setVehiclesFor(null)}>Close</button>
+          </div>
+          <div className="body">
+            <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+              Register the truck(s) this customer usually sends and their capacity, always in cft.
+              Some trucks add a second "extra body" for more load — track that separately if it applies.
+              On a new sale, picking this customer + vehicle prefills the capacity — still editable.
+            </p>
+            {isAdmin && (
+              <form onSubmit={addVehicle} className="row" style={{ alignItems: 'flex-end' }}>
+                <div>
+                  <label>Vehicle number</label>
+                  <VehicleNumberInput value={newVehicleNumber} onChange={setNewVehicleNumber} />
+                </div>
+                <div>
+                  <label>Capacity (cft)</label>
+                  <input
+                    type="number"
+                    value={newVehicleQty || ''}
+                    onChange={(e) => setNewVehicleQty(Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label>Extra body capacity (cft, optional)</label>
+                  <input
+                    type="number"
+                    value={newVehicleExtraBody || ''}
+                    onChange={(e) => setNewVehicleExtraBody(Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <button className="btn sm">Add</button>
+                </div>
+              </form>
+            )}
+            {vehicleError && <div className="err">{vehicleError}</div>}
+            <table style={{ marginTop: 12 }}>
+              <thead>
+                <tr>
+                  <th>Vehicle</th>
+                  <th className="num">Capacity (cft)</th>
+                  <th className="num">Extra body capacity (cft)</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {customerVehicles?.map((cv) => (
+                  <tr key={cv.id}>
+                    <td>{cv.vehicle.number}</td>
+                    <td className="num">
+                      <input
+                        type="number"
+                        defaultValue={Number(cv.quantityCft)}
+                        style={{ width: 100, textAlign: 'right' }}
+                        onBlur={(e) => updateVehicleField(cv, 'quantityCft', Number(e.target.value))}
+                      />
+                    </td>
+                    <td className="num">
+                      <input
+                        type="number"
+                        defaultValue={cv.extraBodyCft ? Number(cv.extraBodyCft) : ''}
+                        placeholder="—"
+                        style={{ width: 100, textAlign: 'right' }}
+                        onBlur={(e) => updateVehicleField(cv, 'extraBodyCft', Number(e.target.value))}
+                      />
+                    </td>
+                    <td className="right">
+                      {isAdmin && (
+                        <button className="btn sm ghost" onClick={() => removeVehicle(cv)}>Remove</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {customerVehicles?.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="muted" style={{ padding: 16 }}>No vehicles registered yet.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

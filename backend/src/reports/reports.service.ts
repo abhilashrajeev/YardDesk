@@ -100,11 +100,19 @@ export class ReportsService {
 
     const map = new Map<
       string,
-      { name: string; unit: string; soldQty: number; soldAmt: number; boughtQty: number; boughtAmt: number }
+      {
+        materialId: string;
+        name: string;
+        unit: string;
+        soldQty: number;
+        soldAmt: number;
+        boughtQty: number;
+        boughtAmt: number;
+      }
     >();
     const row = (id: string, name: string, unit: string) => {
       if (!map.has(id))
-        map.set(id, { name, unit, soldQty: 0, soldAmt: 0, boughtQty: 0, boughtAmt: 0 });
+        map.set(id, { materialId: id, name, unit, soldQty: 0, soldAmt: 0, boughtQty: 0, boughtAmt: 0 });
       return map.get(id)!;
     };
     for (const s of sold) {
@@ -126,6 +134,120 @@ export class ReportsService {
         boughtAmt: round2(r.boughtAmt),
       }))
       .sort((a, b) => b.soldAmt - a.soldAmt);
+  }
+
+  /** Stock value at an instant, valuing each material's balance at its current purchase
+   *  rate (no batch/FIFO cost history is tracked, so this is a snapshot approximation). */
+  private async stockValueAt(at: Date, unitCost: Map<string, number>): Promise<number> {
+    const rows = await this.prisma.$queryRaw<{ materialId: string; balance: string }[]>(Prisma.sql`
+      SELECT DISTINCT ON ("materialId") "materialId", "balance"
+      FROM "StockMovement"
+      WHERE "date" < ${at}
+      ORDER BY "materialId", "date" DESC, "createdAt" DESC
+    `);
+    return rows.reduce((sum, r) => sum + Number(r.balance) * (unitCost.get(r.materialId) ?? 0), 0);
+  }
+
+  private async periodFinancials(rangeStart: Date, rangeEnd: Date, unitCost: Map<string, number>) {
+    const dateFilter = { date: { gte: rangeStart, lt: rangeEnd } };
+    const [sales, purchases, expenses, openingStockValue, closingStockValue] = await Promise.all([
+      this.prisma.sale.aggregate({ _sum: { total: true }, where: { ...dateFilter, status: TxnStatus.CONFIRMED } }),
+      this.prisma.purchase.aggregate({ _sum: { total: true }, where: { ...dateFilter, status: TxnStatus.CONFIRMED } }),
+      this.prisma.expense.aggregate({ _sum: { amount: true }, where: { ...dateFilter, deletedAt: null } }),
+      this.stockValueAt(rangeStart, unitCost),
+      this.stockValueAt(rangeEnd, unitCost),
+    ]);
+
+    const revenue = round2(Number(sales._sum.total ?? 0));
+    const purchaseCost = round2(Number(purchases._sum.total ?? 0));
+    const operatingExpenses = round2(Number(expenses._sum.amount ?? 0));
+    const opening = round2(openingStockValue);
+    const closing = round2(closingStockValue);
+    const cogs = round2(opening + purchaseCost - closing);
+    const grossProfit = round2(revenue - cogs);
+    const netProfit = round2(grossProfit - operatingExpenses);
+
+    return {
+      revenue,
+      purchaseCost,
+      operatingExpenses,
+      openingStockValue: opening,
+      closingStockValue: closing,
+      cogs,
+      grossProfit,
+      netProfit,
+    };
+  }
+
+  /** Equivalent immediately-preceding period of the same length, for a trend comparison. */
+  private shiftPeriod(from: string, to: string): { prevFrom: string; prevTo: string } {
+    const fromDate = new Date(`${from}T00:00:00Z`);
+    const toDate = new Date(`${to}T00:00:00Z`);
+    const spanDays = Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1;
+    const prevToDate = new Date(fromDate.getTime() - 86400000);
+    const prevFromDate = new Date(prevToDate.getTime() - (spanDays - 1) * 86400000);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    return { prevFrom: fmt(prevFromDate), prevTo: fmt(prevToDate) };
+  }
+
+  /**
+   * Accrual profit & loss for a range: gross profit (revenue minus cost of goods sold,
+   * where COGS = opening stock value + purchases - closing stock value) minus operating
+   * expenses. Stock is valued at each material's *current* purchase rate — there's no
+   * batch/FIFO cost history, so this is an approximation, not a true historical costing.
+   * Includes per-material margin and a comparison against the immediately preceding period
+   * of equal length.
+   */
+  async profitAndLoss(from: string, to: string) {
+    const { start, end } = this.range(from, to);
+
+    const materials = await this.prisma.material.findMany({
+      where: { isActive: true },
+      select: { id: true, purchaseRate: true, defaultRate: true },
+    });
+    const unitCost = new Map(materials.map((m) => [m.id, Number(m.purchaseRate ?? m.defaultRate ?? 0)]));
+
+    const { prevFrom, prevTo } = this.shiftPeriod(from, to);
+    const { start: prevStart, end: prevEnd } = this.range(prevFrom, prevTo);
+
+    const [current, previous, expenseRows, materialRows] = await Promise.all([
+      this.periodFinancials(start, end, unitCost),
+      this.periodFinancials(prevStart, prevEnd, unitCost),
+      this.expenseBreakdown(from, to),
+      this.materialBreakdown(from, to),
+    ]);
+
+    const materialMargins = materialRows
+      .filter((m) => m.soldQty > 0)
+      .map((m) => {
+        const cost = unitCost.get(m.materialId) ?? 0;
+        const estCogs = round2(m.soldQty * cost);
+        const margin = round2(m.soldAmt - estCogs);
+        return {
+          name: m.name,
+          unit: m.unit,
+          soldQty: m.soldQty,
+          revenue: m.soldAmt,
+          estCogs,
+          margin,
+          marginPct: m.soldAmt > 0 ? round2((margin / m.soldAmt) * 100) : 0,
+        };
+      })
+      .sort((a, b) => b.margin - a.margin);
+
+    const grossMarginPct = current.revenue > 0 ? round2((current.grossProfit / current.revenue) * 100) : 0;
+    const netMarginPct = current.revenue > 0 ? round2((current.netProfit / current.revenue) * 100) : 0;
+
+    return {
+      from,
+      to,
+      ...current,
+      grossMarginPct,
+      netMarginPct,
+      expenseBreakdown: expenseRows,
+      materialMargins,
+      previousPeriod: { from: prevFrom, to: prevTo, ...previous },
+    };
   }
 
   /**

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -12,6 +12,29 @@ export class MaterialsService {
   ) {}
 
   async create(dto: CreateMaterialDto, userId: string) {
+    const existing = await this.prisma.material.findUnique({ where: { name: dto.name } });
+    if (existing) {
+      if (existing.isActive) {
+        throw new ConflictException('A material with this name already exists.');
+      }
+      // Name was previously deleted (soft-deleted) — reactivate that record instead of
+      // failing on the unique name constraint.
+      const material = await this.prisma.material.update({
+        where: { id: existing.id },
+        data: { ...dto, isActive: true },
+      });
+      await this.audit.log({
+        entityType: 'MATERIAL',
+        entityId: material.id,
+        action: AuditAction.UPDATE,
+        summary: `Material re-added: ${material.name}`,
+        before: existing,
+        after: material,
+        userId,
+      });
+      return material;
+    }
+
     const material = await this.prisma.material.create({ data: dto });
     await this.audit.log({
       entityType: 'MATERIAL',

@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { CreateVendorDto, UpdateVendorDto } from './dto';
+import { CreateVendorDto, UpdateVendorDto, AddVendorVehicleDto, UpdateVendorVehicleDto } from './dto';
 
 @Injectable()
 export class VendorsService {
@@ -72,5 +72,83 @@ export class VendorsService {
       userId,
     });
     return vendor;
+  }
+
+  // --- Vendor's usual vehicles + typical quantity, for prefilling the purchase form ---
+
+  async listVehicles(vendorId: string) {
+    await this.findOne(vendorId);
+    return this.prisma.vendorVehicle.findMany({
+      where: { vendorId },
+      include: { vehicle: { select: { id: true, number: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async addVehicle(vendorId: string, dto: AddVendorVehicleDto, userId: string) {
+    await this.findOne(vendorId);
+    const number = dto.vehicleNumber.trim();
+
+    let vehicle = await this.prisma.vehicle.findFirst({
+      where: { number: { equals: number, mode: 'insensitive' } },
+    });
+    if (!vehicle) {
+      vehicle = await this.prisma.vehicle.create({ data: { number } });
+    }
+
+    // Re-registering the same vehicle for this vendor just updates the quantity.
+    const vv = await this.prisma.vendorVehicle.upsert({
+      where: { vendorId_vehicleId: { vendorId, vehicleId: vehicle.id } },
+      create: { vendorId, vehicleId: vehicle.id, defaultQuantity: dto.defaultQuantity },
+      update: { defaultQuantity: dto.defaultQuantity },
+      include: { vehicle: { select: { id: true, number: true } } },
+    });
+    await this.audit.log({
+      entityType: 'VENDOR_VEHICLE',
+      entityId: vv.id,
+      action: AuditAction.CREATE,
+      summary: `Vendor vehicle set: ${vehicle.number} — ${dto.defaultQuantity}`,
+      after: vv,
+      userId,
+    });
+    return vv;
+  }
+
+  async updateVehicle(vendorId: string, vvId: string, dto: UpdateVendorVehicleDto, userId: string) {
+    const before = await this.prisma.vendorVehicle.findFirst({ where: { id: vvId, vendorId } });
+    if (!before) throw new NotFoundException('Vendor vehicle entry not found');
+    const vv = await this.prisma.vendorVehicle.update({
+      where: { id: vvId },
+      data: { defaultQuantity: dto.defaultQuantity },
+      include: { vehicle: { select: { id: true, number: true } } },
+    });
+    await this.audit.log({
+      entityType: 'VENDOR_VEHICLE',
+      entityId: vvId,
+      action: AuditAction.UPDATE,
+      summary: `Vendor vehicle quantity updated: ${vv.vehicle.number} — ${dto.defaultQuantity}`,
+      before,
+      after: vv,
+      userId,
+    });
+    return vv;
+  }
+
+  async removeVehicle(vendorId: string, vvId: string, userId: string) {
+    const before = await this.prisma.vendorVehicle.findFirst({
+      where: { id: vvId, vendorId },
+      include: { vehicle: { select: { number: true } } },
+    });
+    if (!before) throw new NotFoundException('Vendor vehicle entry not found');
+    await this.prisma.vendorVehicle.delete({ where: { id: vvId } });
+    await this.audit.log({
+      entityType: 'VENDOR_VEHICLE',
+      entityId: vvId,
+      action: AuditAction.DELETE,
+      summary: `Vendor vehicle removed: ${before.vehicle.number}`,
+      before,
+      userId,
+    });
+    return { success: true };
   }
 }

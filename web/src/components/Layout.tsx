@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { useFetch, notificationsBus } from '../lib/hooks';
+import { useFetch, notificationsBus, titleCase } from '../lib/hooks';
 import { Icon } from './Icon';
+import QuickSearch from './QuickSearch';
 import type { Permission } from '../types';
 
 const link = ({ isActive }: { isActive: boolean }) => (isActive ? 'active' : '');
@@ -54,16 +55,40 @@ export default function Layout() {
   // Close the mobile drawer whenever the route changes.
   useEffect(() => setNavOpen(false), [loc.pathname]);
 
+  // Only pages this user can actually reach show up in quick-search — mirrors the sidebar's own gating.
+  const searchItems = [
+    { path: '/', label: TITLES['/'] },
+    ...(can('SALES') ? [{ path: '/sales', label: TITLES['/sales'] }] : []),
+    ...(can('PURCHASES') ? [{ path: '/purchases', label: TITLES['/purchases'] }] : []),
+    ...(can('PAYMENTS') ? [{ path: '/payments', label: TITLES['/payments'] }] : []),
+    { path: '/outstanding', label: TITLES['/outstanding'] },
+    ...(can('STOCK') ? [{ path: '/inventory', label: TITLES['/inventory'] }] : []),
+    ...(can('EXPENSES') ? [{ path: '/expenses', label: TITLES['/expenses'] }] : []),
+    { path: '/customers', label: TITLES['/customers'] },
+    { path: '/vendors', label: TITLES['/vendors'] },
+    { path: '/vehicles', label: TITLES['/vehicles'] },
+    ...(isAdmin
+      ? [
+          { path: '/materials', label: TITLES['/materials'] },
+          { path: '/day-close', label: TITLES['/day-close'] },
+          { path: '/reports', label: TITLES['/reports'] },
+        ]
+      : []),
+    ...(user?.role === 'SUPER_ADMIN'
+      ? [
+          { path: '/audit-log', label: TITLES['/audit-log'] },
+          { path: '/users', label: TITLES['/users'] },
+        ]
+      : []),
+    { path: '/profile', label: TITLES['/profile'] },
+  ];
+
   return (
     <div className="app">
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
       <aside className={`sidebar ${navOpen ? 'open' : ''}`}>
         <div className="brand">
-          <div className="brand-mark">D</div>
-          <div className="brand-name">
-            Devi Traders
-            <small>YardDesk</small>
-          </div>
+          <img src="/brand/devi-header.png" alt="Devi Traders" className="brand-logo" />
           <button className="icon-btn nav-close" title="Close menu" onClick={() => setNavOpen(false)}>
             <Icon name="x" size={18} />
           </button>
@@ -139,6 +164,10 @@ export default function Layout() {
             </>
           )}
         </nav>
+        <div className="sidebar-footer">
+          <span className="label">Powered by</span>
+          <img src="/brand/logo-full.png" alt="YardDesk" />
+        </div>
       </aside>
 
       <div className="main">
@@ -149,6 +178,7 @@ export default function Layout() {
             </button>
             <div className="page-title">{TITLES[loc.pathname] ?? 'YardDesk'}</div>
           </div>
+          <QuickSearch items={searchItems} />
           <div className="flex" style={{ gap: 16 }}>
             <NavLink to="/notifications" className="icon-btn" title="Notifications">
               <Icon name="bell" size={19} />
@@ -158,8 +188,9 @@ export default function Layout() {
               <div className="avatar">{initials(user?.name)}</div>
               <div>
                 <div className="nm">{user?.name}</div>
-                <div className="rl">{user?.role.replace('_', ' ')}</div>
+                <div className="rl">{user ? titleCase(user.role.replace('_', ' ')) : ''}</div>
               </div>
+              <Icon name="chevron-down" size={15} className="muted" />
             </NavLink>
             <button
               className="icon-btn"

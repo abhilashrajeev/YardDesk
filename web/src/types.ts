@@ -12,6 +12,9 @@ export const ALL_PERMISSIONS: { value: Permission; label: string }[] = [
   { value: 'EXPENSES', label: 'Expenses' },
 ];
 
+export const permissionLabel = (p: Permission) =>
+  ALL_PERMISSIONS.find((x) => x.value === p)?.label ?? p;
+
 export const TON_TO_CFT = 21;
 
 export interface User {
@@ -55,11 +58,28 @@ export interface Customer {
   openingBalance: string;
 }
 
+export interface CustomerVehicle {
+  id: string;
+  customerId: string;
+  vehicleId: string;
+  quantityCft: string;
+  extraBodyCft?: string | null;
+  vehicle: { id: string; number: string };
+}
+
 export interface Vendor {
   id: string;
   name: string;
   phone?: string | null;
   openingBalance: string;
+}
+
+export interface VendorVehicle {
+  id: string;
+  vendorId: string;
+  vehicleId: string;
+  defaultQuantity: string;
+  vehicle: { id: string; number: string };
 }
 
 export interface Vehicle {
@@ -69,9 +89,21 @@ export interface Vehicle {
   ownerName?: string | null;
   ownerPhone?: string | null;
   capacity?: string | null;
+  extraBodyCft?: string | null;
   driverName?: string | null;
   driverPhone?: string | null;
   isActive?: boolean;
+  customerVehicles?: {
+    id: string;
+    quantityCft: string;
+    extraBodyCft?: string | null;
+    customer: { id: string; name: string };
+  }[];
+  vendorVehicles?: {
+    id: string;
+    defaultQuantity: string;
+    vendor: { id: string; name: string };
+  }[];
 }
 
 export interface LineInput {
@@ -103,6 +135,7 @@ export interface Sale {
   customer?: { name: string };
   customerId?: string;
   vehicleId?: string | null;
+  vehicle?: { number: string } | null;
   items?: LineItem[];
   paidAmount?: number;
   balance?: number;

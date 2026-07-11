@@ -38,7 +38,11 @@ export default function Materials() {
     }
   }
 
-  async function saveField(m: Material, field: 'defaultRate' | 'purchaseRate' | 'purchaseRateTon', value: number) {
+  async function saveField(
+    m: Material,
+    field: 'name' | 'unit' | 'defaultRate' | 'purchaseRate' | 'purchaseRateTon',
+    value: string | number,
+  ) {
     try {
       await api.patch(`/materials/${m.id}`, { [field]: value });
       refetch();
@@ -125,8 +129,24 @@ export default function Materials() {
             <tbody>
               {materials?.map((m) => (
                 <tr key={m.id}>
-                  <td>{m.name}</td>
-                  <td className="muted">{m.unit}</td>
+                  <td>
+                    <input
+                      type="text"
+                      defaultValue={m.name}
+                      style={{ width: 150 }}
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (v && v !== m.name) saveField(m, 'name', v);
+                      }}
+                    />
+                  </td>
+                  <td className="muted">
+                    <select defaultValue={m.unit} onChange={(e) => saveField(m, 'unit', e.target.value)}>
+                      <option value="CFT">CFT</option>
+                      <option value="BAG">BAG</option>
+                      <option value="NOS">NOS</option>
+                    </select>
+                  </td>
                   <td className="num">{qty(m.currentStock)}</td>
                   <td className="num">
                     <input

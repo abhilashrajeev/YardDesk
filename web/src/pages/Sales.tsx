@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate, statusPillClass } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
 import LineItems from '../components/LineItems';
 import SaleDetail from '../components/SaleDetail';
 import CustomerPicker from '../components/CustomerPicker';
+import VehiclePicker, { type UsualVehicle } from '../components/VehiclePicker';
 import PeriodFilter, { defaultPeriodState, periodRange, periodLabel } from '../components/PeriodFilter';
-import type { Customer, Material, Sale, LineInput, PaymentMode } from '../types';
+import type { Customer, Material, Sale, LineInput, PaymentMode, Vehicle, CustomerVehicle } from '../types';
 
 export default function Sales() {
   const { user } = useAuth();
@@ -17,8 +19,21 @@ export default function Sales() {
   const { data: sales, refetch } = useFetch<Sale[]>(salesUrl);
   const { data: customers, setData: setCustomers } = useFetch<Customer[]>('/customers');
   const { data: materials } = useFetch<Material[]>('/inventory');
-  const [open, setOpen] = useState(false);
+  const { data: vehicles, refetch: refetchVehicles } = useFetch<Vehicle[]>('/vehicles');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [open, setOpen] = useState(searchParams.get('new') === '1');
   const [viewId, setViewId] = useState<string | null>(null);
+
+  // Quick Actions on the dashboard link here with ?new=1 to open the form directly;
+  // strip it once applied so it doesn't reopen if the user navigates back later.
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setOpen(true);
+      searchParams.delete('new');
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const active = sales?.filter((s) => s.status !== 'CANCELLED') ?? [];
   const periodTotal = active.reduce((sum, s) => sum + Number(s.total), 0);
@@ -38,17 +53,19 @@ export default function Sales() {
         <NewSale
           customers={customers}
           materials={materials}
+          vehicles={vehicles ?? []}
           onCustomerCreated={(c) => setCustomers([...(customers ?? []), c])}
           onDone={() => {
             setOpen(false);
             refetch();
+            refetchVehicles();
           }}
         />
       )}
 
       <div className="panel">
         <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
-          <h2 style={{ margin: 0 }}>Sales — {periodLabel(period)}</h2>
+          <h2 style={{ margin: 0, padding: 0, border: 0 }}>Sales — {periodLabel(period)}</h2>
           <PeriodFilter value={period} onChange={setPeriod} allowRecent />
         </div>
         <div className="between" style={{ padding: '10px 16px' }}>
@@ -62,6 +79,7 @@ export default function Sales() {
                 <th>Bill #</th>
                 <th>Date</th>
                 <th>Customer</th>
+                <th>Vehicle</th>
                 <th>Mode</th>
                 <th className="num">Total</th>
                 <th>Status</th>
@@ -74,6 +92,7 @@ export default function Sales() {
                   <td>{s.billNo}</td>
                   <td>{fmtDate(s.date)}</td>
                   <td>{s.customer?.name}</td>
+                  <td className="muted">{s.vehicle?.number ?? '—'}</td>
                   <td>
                     <span className={s.paymentMode === 'CREDIT' ? 'pill neg' : 'pill pos'}>{s.paymentMode}</span>
                   </td>
@@ -94,7 +113,7 @@ export default function Sales() {
               ))}
               {sales?.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="muted" style={{ padding: 16 }}>No sales for this period.</td>
+                  <td colSpan={8} className="muted" style={{ padding: 16 }}>No sales for this period.</td>
                 </tr>
               )}
             </tbody>
@@ -110,15 +129,19 @@ export default function Sales() {
 function NewSale({
   customers,
   materials,
+  vehicles,
   onCustomerCreated,
   onDone,
 }: {
   customers: Customer[];
   materials: Material[];
+  vehicles: Vehicle[];
   onCustomerCreated: (c: Customer) => void;
   onDone: () => void;
 }) {
   const [customerId, setCustomerId] = useState(customers[0]?.id ?? '');
+  const [vehicleNumber, setVehicleNumber] = useState('');
+  const [customerVehicles, setCustomerVehicles] = useState<CustomerVehicle[]>([]);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH');
   const [freight, setFreight] = useState(0);
   const [discount, setDiscount] = useState(0);
@@ -132,6 +155,50 @@ function NewSale({
   const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
   const total = subTotal + Number(freight) - Number(discount);
 
+  // Load this customer's usual vehicles so the vehicle field can prefill quantity from them.
+  useEffect(() => {
+    if (!customerId) {
+      setCustomerVehicles([]);
+      return;
+    }
+    let cancelled = false;
+    api.get<CustomerVehicle[]>(`/customers/${customerId}/vehicles`).then(({ data }) => {
+      if (!cancelled) setCustomerVehicles(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId]);
+
+  const usualVehicles: UsualVehicle[] = customerVehicles.map((cv) => ({
+    id: cv.id,
+    vehicleId: cv.vehicleId,
+    vehicle: cv.vehicle,
+    usualLabel: cv.extraBodyCft
+      ? `${cv.quantityCft} cft + ${cv.extraBodyCft} cft extra body`
+      : `${cv.quantityCft} cft`,
+    quantity: Number(cv.quantityCft) + Number(cv.extraBodyCft ?? 0),
+  }));
+
+  /** Picking one of this customer's registered vehicles prefills the first line's quantity
+   *  (only if it's still empty, so it never clobbers something already typed in) — still editable,
+   *  since load size varies. */
+  function handleSelectUsual(u: UsualVehicle) {
+    if (lines.length && !lines[0].quantity) {
+      setLines(lines.map((l, i) => (i === 0 ? { ...l, quantity: u.quantity } : l)));
+    }
+  }
+
+  /** Same vehicle comes back daily — reuse it by number (case-insensitive), or register it on the fly. */
+  async function resolveVehicleId(): Promise<string | undefined> {
+    const num = vehicleNumber.trim();
+    if (!num) return undefined;
+    const existing = vehicles.find((v) => v.number.toLowerCase() === num.toLowerCase());
+    if (existing) return existing.id;
+    const { data } = await api.post('/vehicles', { number: num });
+    return data.id;
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -139,8 +206,10 @@ function NewSale({
     if (!items.length) return setError('Add at least one line with quantity.');
     setSaving(true);
     try {
+      const vehicleId = await resolveVehicleId();
       await api.post('/sales', {
         customerId,
+        vehicleId,
         paymentMode,
         freight: Number(freight),
         discount: Number(discount),
@@ -167,6 +236,17 @@ function NewSale({
               value={customerId}
               onChange={setCustomerId}
               onCreated={onCustomerCreated}
+            />
+          </div>
+          <div>
+            <label>Vehicle number (optional)</label>
+            <VehiclePicker
+              usualVehicles={usualVehicles}
+              allVehicles={vehicles}
+              value={vehicleNumber}
+              onChange={setVehicleNumber}
+              onSelectUsual={handleSelectUsual}
+              groupLabel="This customer's usual trucks"
             />
           </div>
           <div>

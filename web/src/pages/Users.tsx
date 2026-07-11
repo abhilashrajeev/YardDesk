@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
-import { useFetch, fmtDate } from '../lib/hooks';
-import { ALL_PERMISSIONS } from '../types';
+import { useFetch, fmtDate, titleCase } from '../lib/hooks';
+import { ALL_PERMISSIONS, permissionLabel } from '../types';
 import type { StaffUser, Permission, Role } from '../types';
 
 function PermissionPicker({
@@ -155,14 +155,14 @@ export default function Users() {
                   <td className="muted">{u.phone}</td>
                   <td>
                     <span className={`pill ${u.role === 'SUPER_ADMIN' ? 'warn' : u.role === 'ADMIN' ? 'pos' : ''}`}>
-                      {u.role.replace('_', ' ')}
+                      {titleCase(u.role.replace('_', ' '))}
                     </span>
                   </td>
                   <td className="muted" style={{ fontSize: 12 }}>
                     {u.role === 'SUPER_ADMIN'
                       ? 'All'
                       : u.permissions.length
-                        ? u.permissions.join(', ')
+                        ? u.permissions.map(permissionLabel).join(', ')
                         : '—'}
                   </td>
                   <td>

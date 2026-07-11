@@ -164,7 +164,7 @@ export default function Expenses() {
 
       <div className="panel">
         <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
-          <h2 style={{ margin: 0 }}>Expenses — {periodLabel(period)}</h2>
+          <h2 style={{ margin: 0, padding: 0, border: 0 }}>Expenses — {periodLabel(period)}</h2>
           <PeriodFilter value={period} onChange={setPeriod} allowRecent />
         </div>
         <div className="between" style={{ padding: '10px 16px' }}>

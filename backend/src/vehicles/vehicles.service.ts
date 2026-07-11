@@ -28,6 +28,10 @@ export class VehiclesService {
     return this.prisma.vehicle.findMany({
       where: { isActive: true },
       orderBy: { number: 'asc' },
+      include: {
+        customerVehicles: { include: { customer: { select: { id: true, name: true } } } },
+        vendorVehicles: { include: { vendor: { select: { id: true, name: true } } } },
+      },
     });
   }
 

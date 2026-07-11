@@ -38,3 +38,23 @@ export class UpdateCustomerDto {
   @IsOptional() @IsNumber() openingBalance?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
+
+export class AddCustomerVehicleDto {
+  @IsString()
+  @IsNotEmpty()
+  vehicleNumber!: string;
+
+  /** Always in cft. */
+  @IsNumber()
+  quantityCft!: number;
+
+  /** Some trucks add a second body for extra load — optional, also cft. */
+  @IsOptional()
+  @IsNumber()
+  extraBodyCft?: number;
+}
+
+export class UpdateCustomerVehicleDto {
+  @IsOptional() @IsNumber() quantityCft?: number;
+  @IsOptional() @IsNumber() extraBodyCft?: number;
+}

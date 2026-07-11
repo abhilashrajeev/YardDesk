@@ -2,7 +2,22 @@ import { useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
+import VehicleNumberInput from '../components/VehicleNumberInput';
 import type { Vehicle } from '../types';
+
+/** Capacity registered against this truck by a customer/vendor takes priority over the
+ *  manually-entered value, since that's the number actually used day-to-day. */
+function displayCapacity(v: Vehicle): string {
+  const cv = v.customerVehicles?.[0];
+  if (cv) return cv.quantityCft;
+  const vv = v.vendorVehicles?.[0];
+  if (vv) return vv.defaultQuantity;
+  return v.capacity ?? '—';
+}
+
+function displayExtraBody(v: Vehicle): string {
+  return v.customerVehicles?.[0]?.extraBodyCft ?? v.extraBodyCft ?? '—';
+}
 
 export default function Vehicles() {
   const { data: vehicles, refetch } = useFetch<Vehicle[]>('/vehicles');
@@ -13,9 +28,23 @@ export default function Vehicles() {
   const [ownerName, setOwnerName] = useState('');
   const [ownerPhone, setOwnerPhone] = useState('');
   const [capacity, setCapacity] = useState(0);
+  const [extraBodyCft, setExtraBodyCft] = useState(0);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<Vehicle | null>(null);
+  // Prefilled from the same effective value shown in the table (customer/vendor
+  // registration takes priority over the vehicle's own field) so editing doesn't look
+  // like it's ignoring what's on screen.
+  const [editCapacity, setEditCapacity] = useState('');
+  const [editExtraBody, setEditExtraBody] = useState('');
+
+  function startEdit(v: Vehicle) {
+    setEditing(v);
+    const cap = displayCapacity(v);
+    const extra = displayExtraBody(v);
+    setEditCapacity(cap === '—' ? '' : cap);
+    setEditExtraBody(extra === '—' ? '' : extra);
+  }
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
@@ -28,11 +57,13 @@ export default function Vehicles() {
         ownerName: ownerName || undefined,
         ownerPhone: ownerPhone || undefined,
         capacity: capacity > 0 ? Number(capacity) : undefined,
+        extraBodyCft: extraBodyCft > 0 ? Number(extraBodyCft) : undefined,
       });
       setNumber('');
       setOwnerName('');
       setOwnerPhone('');
       setCapacity(0);
+      setExtraBodyCft(0);
       refetch();
     } catch (err) {
       setError(apiError(err));
@@ -46,12 +77,35 @@ export default function Vehicles() {
     setSaving(true);
     setError('');
     try {
+      const cv = editing.customerVehicles?.[0];
+      const vv = editing.vendorVehicles?.[0];
+
       await api.patch(`/vehicles/${editing.id}`, {
         number: editing.number,
         ownerName: editing.ownerName || undefined,
         ownerPhone: editing.ownerPhone || undefined,
-        capacity: editing.capacity ? Number(editing.capacity) : undefined,
+        // Only write capacity/extra body onto the vehicle itself when no customer/vendor
+        // registration owns those numbers — otherwise the table would keep showing the
+        // registered value and this edit would look like it did nothing.
+        ...(!cv && !vv
+          ? {
+              capacity: editCapacity ? Number(editCapacity) : undefined,
+              extraBodyCft: editExtraBody ? Number(editExtraBody) : undefined,
+            }
+          : {}),
       });
+
+      if (cv) {
+        await api.patch(`/customers/${cv.customer.id}/vehicles/${cv.id}`, {
+          quantityCft: editCapacity ? Number(editCapacity) : undefined,
+          extraBodyCft: editExtraBody ? Number(editExtraBody) : undefined,
+        });
+      } else if (vv) {
+        await api.patch(`/vendors/${vv.vendor.id}/vehicles/${vv.id}`, {
+          defaultQuantity: editCapacity ? Number(editCapacity) : undefined,
+        });
+      }
+
       setEditing(null);
       refetch();
     } catch (err) {
@@ -80,7 +134,7 @@ export default function Vehicles() {
           <div className="row">
             <div>
               <label>Vehicle number</label>
-              <input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="e.g. KA-05-AB-1234" required />
+              <VehicleNumberInput value={number} onChange={setNumber} required />
             </div>
             <div>
               <label>Owner name</label>
@@ -91,8 +145,12 @@ export default function Vehicles() {
               <input value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} />
             </div>
             <div>
-              <label>Capacity (tons)</label>
+              <label>Capacity (cft)</label>
               <input type="number" value={capacity || ''} onChange={(e) => setCapacity(Number(e.target.value))} />
+            </div>
+            <div>
+              <label>Extra body capacity (cft, optional)</label>
+              <input type="number" value={extraBodyCft || ''} onChange={(e) => setExtraBodyCft(Number(e.target.value))} />
             </div>
           </div>
           {error && <div className="err">{error}</div>}
@@ -109,7 +167,8 @@ export default function Vehicles() {
                 <th>Number</th>
                 <th>Owner</th>
                 <th>Phone</th>
-                <th className="num">Capacity (t)</th>
+                <th className="num">Capacity (cft)</th>
+                <th className="num">Extra body capacity (cft)</th>
                 <th></th>
               </tr>
             </thead>
@@ -119,11 +178,12 @@ export default function Vehicles() {
                   <td style={{ fontWeight: 600 }}>{v.number}</td>
                   <td className="muted">{v.ownerName ?? '—'}</td>
                   <td className="muted">{v.ownerPhone ?? '—'}</td>
-                  <td className="num">{v.capacity ?? '—'}</td>
+                  <td className="num">{displayCapacity(v)}</td>
+                  <td className="num">{displayExtraBody(v)}</td>
                   <td className="right">
                     {isAdmin && (
                       <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
-                        <button className="btn ghost sm" onClick={() => setEditing(v)}>Edit</button>
+                        <button className="btn ghost sm" onClick={() => startEdit(v)}>Edit</button>
                         <button className="btn ghost sm" onClick={() => remove(v.id)}>Delete</button>
                       </div>
                     )}
@@ -132,7 +192,7 @@ export default function Vehicles() {
               ))}
               {vehicles?.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="muted" style={{ padding: 16 }}>No vehicles yet.</td>
+                  <td colSpan={6} className="muted" style={{ padding: 16 }}>No vehicles yet.</td>
                 </tr>
               )}
             </tbody>
@@ -147,7 +207,7 @@ export default function Vehicles() {
             <div className="row">
               <div>
                 <label>Vehicle number</label>
-                <input value={editing.number} onChange={(e) => setEditing({ ...editing, number: e.target.value })} />
+                <VehicleNumberInput value={editing.number} onChange={(v) => setEditing({ ...editing, number: v })} />
               </div>
               <div>
                 <label>Owner name</label>
@@ -158,8 +218,12 @@ export default function Vehicles() {
                 <input value={editing.ownerPhone ?? ''} onChange={(e) => setEditing({ ...editing, ownerPhone: e.target.value })} />
               </div>
               <div>
-                <label>Capacity (tons)</label>
-                <input type="number" value={Number(editing.capacity) || ''} onChange={(e) => setEditing({ ...editing, capacity: e.target.value })} />
+                <label>Capacity (cft)</label>
+                <input type="number" value={editCapacity} onChange={(e) => setEditCapacity(e.target.value)} />
+              </div>
+              <div>
+                <label>Extra body capacity (cft, optional)</label>
+                <input type="number" value={editExtraBody} onChange={(e) => setEditExtraBody(e.target.value)} />
               </div>
             </div>
             {error && <div className="err">{error}</div>}

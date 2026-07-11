@@ -10,7 +10,7 @@ export class AuditController {
   constructor(private audit: AuditService) {}
 
   @Get()
-  list(@Query('entityType') entityType?: string) {
-    return this.audit.list({ entityType });
+  list(@Query('entityType') entityType?: string, @Query('limit') limit?: string) {
+    return this.audit.list({ entityType, limit: limit ? Number(limit) : undefined });
   }
 }

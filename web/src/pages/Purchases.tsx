@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate, statusPillClass } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
 import PurchaseLineItems from '../components/PurchaseLineItems';
 import PurchaseDetail from '../components/PurchaseDetail';
 import VendorPicker from '../components/VendorPicker';
+import VehiclePicker, { type UsualVehicle } from '../components/VehiclePicker';
 import PeriodFilter, { defaultPeriodState, periodRange, periodLabel } from '../components/PeriodFilter';
-import type { Vendor, Material, Purchase, LineInput, PaymentMode, Vehicle } from '../types';
+import type { Vendor, Material, Purchase, LineInput, PaymentMode, Vehicle, VendorVehicle } from '../types';
 
 export default function Purchases() {
   const { user } = useAuth();
@@ -18,8 +20,20 @@ export default function Purchases() {
   const { data: vendors, setData: setVendors } = useFetch<Vendor[]>('/vendors');
   const { data: materials } = useFetch<Material[]>('/inventory');
   const { data: vehicles, refetch: refetchVehicles } = useFetch<Vehicle[]>('/vehicles');
-  const [open, setOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [open, setOpen] = useState(searchParams.get('new') === '1');
   const [viewId, setViewId] = useState<string | null>(null);
+
+  // Quick Actions on the dashboard link here with ?new=1 to open the form directly;
+  // strip it once applied so it doesn't reopen if the user navigates back later.
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setOpen(true);
+      searchParams.delete('new');
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const active = purchases?.filter((p) => p.status !== 'CANCELLED') ?? [];
   const periodTotal = active.reduce((sum, p) => sum + Number(p.total), 0);
@@ -51,7 +65,7 @@ export default function Purchases() {
 
       <div className="panel">
         <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
-          <h2 style={{ margin: 0 }}>Purchases — {periodLabel(period)}</h2>
+          <h2 style={{ margin: 0, padding: 0, border: 0 }}>Purchases — {periodLabel(period)}</h2>
           <PeriodFilter value={period} onChange={setPeriod} allowRecent />
         </div>
         <div className="between" style={{ padding: '10px 16px' }}>
@@ -124,6 +138,7 @@ function NewPurchase({
   const [vendorId, setVendorId] = useState(vendors[0]?.id ?? '');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [vehicleNumber, setVehicleNumber] = useState('');
+  const [vendorVehicles, setVendorVehicles] = useState<VendorVehicle[]>([]);
   const [freight, setFreight] = useState(0);
   const [paidAmount, setPaidAmount] = useState(0);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH');
@@ -135,6 +150,38 @@ function NewPurchase({
 
   const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
   const total = subTotal + Number(freight);
+
+  // Load this vendor's usual vehicles so the vehicle field can prefill quantity from them.
+  useEffect(() => {
+    if (!vendorId) {
+      setVendorVehicles([]);
+      return;
+    }
+    let cancelled = false;
+    api.get<VendorVehicle[]>(`/vendors/${vendorId}/vehicles`).then(({ data }) => {
+      if (!cancelled) setVendorVehicles(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [vendorId]);
+
+  const usualVehicles: UsualVehicle[] = vendorVehicles.map((vv) => ({
+    id: vv.id,
+    vehicleId: vv.vehicleId,
+    vehicle: vv.vehicle,
+    usualLabel: String(vv.defaultQuantity),
+    quantity: Number(vv.defaultQuantity),
+  }));
+
+  /** Picking one of this vendor's registered vehicles prefills the first line's quantity
+   *  (only if it's still empty, so it never clobbers something already typed in) — still editable,
+   *  since the same truck doesn't always bring the same amount. */
+  function handleSelectUsual(u: UsualVehicle) {
+    if (lines.length && !lines[0].quantity) {
+      setLines(lines.map((l, i) => (i === 0 ? { ...l, quantity: u.quantity } : l)));
+    }
+  }
 
   /** Same vehicle comes back daily — reuse it by number (case-insensitive), or register it on the fly. */
   async function resolveVehicleId(): Promise<string | undefined> {
@@ -191,17 +238,14 @@ function NewPurchase({
           </div>
           <div>
             <label>Vehicle number (optional)</label>
-            <input
+            <VehiclePicker
+              usualVehicles={usualVehicles}
+              allVehicles={vehicles}
               value={vehicleNumber}
-              onChange={(e) => setVehicleNumber(e.target.value)}
-              placeholder="e.g. KA-05-AB-1234"
-              list="vehicle-numbers"
+              onChange={setVehicleNumber}
+              onSelectUsual={handleSelectUsual}
+              groupLabel="This vendor's usual trucks"
             />
-            <datalist id="vehicle-numbers">
-              {vehicles.map((v) => (
-                <option key={v.id} value={v.number} />
-              ))}
-            </datalist>
           </div>
         </div>
 

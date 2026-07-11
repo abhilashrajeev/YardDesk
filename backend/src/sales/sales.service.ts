@@ -237,6 +237,7 @@ export class SalesService {
       take: params.limit ?? 100,
       include: {
         customer: { select: { name: true } },
+        vehicle: { select: { number: true } },
         items: true,
         payments: { select: { amount: true, direction: true } },
       },

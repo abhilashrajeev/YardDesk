@@ -42,6 +42,12 @@ export class ReportsController {
     return this.reports.expenseBreakdown(d(from, today), d(to, today));
   }
 
+  @Get('profit-loss')
+  profitLoss(@Query('from') from: string, @Query('to') to: string) {
+    const today = todayIST();
+    return this.reports.profitAndLoss(d(from, today), d(to, today));
+  }
+
   @Get('series')
   series(
     @Query('from') from: string,

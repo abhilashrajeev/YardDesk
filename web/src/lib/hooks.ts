@@ -42,6 +42,22 @@ export const qty = (n: number | string | null | undefined) =>
 export const fmtDate = (s: string) =>
   new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
+/** Short relative time ("5 mins ago", "2 hours ago", "3 days ago") for activity feeds. */
+export const timeAgo = (s: string) => {
+  const diffMs = Date.now() - new Date(s).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+};
+
 /** CSS pill class for a payment status (PAID / PART_PAID / PENDING / OVERDUE). */
 export const statusPillClass = (status?: string) =>
   status === 'PAID' ? 'pos' : status === 'OVERDUE' ? 'neg' : 'warn';
+
+/** "SUPER ADMIN" / "STOCK ADJUSTMENTS" -> "Super Admin" / "Stock Adjustments". */
+export const titleCase = (s: string) =>
+  s.toLowerCase().replace(/(^|\s)\w/g, (c) => c.toUpperCase());

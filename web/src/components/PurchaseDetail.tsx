@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, money, qty, fmtDate } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
-import Modal from './Modal';
+import DetailPanel from './DetailPanel';
 import PurchaseLineItems from './PurchaseLineItems';
-import type { Purchase, Vendor, Material, Vehicle, LineInput } from '../types';
+import VehiclePicker, { type UsualVehicle } from './VehiclePicker';
+import type { Purchase, Vendor, Material, Vehicle, VendorVehicle, LineInput } from '../types';
 
 export default function PurchaseDetail({
   id,
@@ -49,7 +50,7 @@ export default function PurchaseDetail({
   }
 
   return (
-    <Modal title={purchase.invoiceNo ?? 'Purchase'} onClose={onClose}>
+    <DetailPanel title={purchase.invoiceNo ?? 'Purchase'} onClose={onClose}>
       <div className="row">
         <div>
           <label>Vendor</label>
@@ -58,6 +59,10 @@ export default function PurchaseDetail({
         <div>
           <label>Date</label>
           <div>{fmtDate(purchase.date)}</div>
+        </div>
+        <div>
+          <label>Vehicle</label>
+          <div>{purchase.vehicle?.number ?? '—'}</div>
         </div>
         {purchase.status === 'CANCELLED' && (
           <div>
@@ -111,7 +116,7 @@ export default function PurchaseDetail({
           </div>
         </div>
       )}
-    </Modal>
+    </DetailPanel>
   );
 }
 
@@ -133,6 +138,7 @@ function EditPurchase({
   const [vendorId, setVendorId] = useState(purchase.vendorId ?? '');
   const [invoiceNo, setInvoiceNo] = useState(purchase.invoiceNo ?? '');
   const [vehicleNumber, setVehicleNumber] = useState(purchase.vehicle?.number ?? '');
+  const [vendorVehicles, setVendorVehicles] = useState<VendorVehicle[]>([]);
   const [freight, setFreight] = useState(Number(purchase.freight ?? 0));
   const [lines, setLines] = useState<LineInput[]>(
     (purchase.items ?? []).map((it) => ({
@@ -147,6 +153,28 @@ function EditPurchase({
 
   const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
   const total = subTotal + Number(freight);
+
+  useEffect(() => {
+    if (!vendorId) {
+      setVendorVehicles([]);
+      return;
+    }
+    let cancelled = false;
+    api.get<VendorVehicle[]>(`/vendors/${vendorId}/vehicles`).then(({ data }) => {
+      if (!cancelled) setVendorVehicles(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [vendorId]);
+
+  const usualVehicles: UsualVehicle[] = vendorVehicles.map((vv) => ({
+    id: vv.id,
+    vehicleId: vv.vehicleId,
+    vehicle: vv.vehicle,
+    usualLabel: String(vv.defaultQuantity),
+    quantity: Number(vv.defaultQuantity),
+  }));
 
   async function resolveVehicleId(): Promise<string | undefined> {
     const num = vehicleNumber.trim();
@@ -183,7 +211,7 @@ function EditPurchase({
   if (!vendors || !materials || !vehicles) return null;
 
   return (
-    <Modal title={`Edit ${purchase.invoiceNo ?? 'Purchase'}`} onClose={onClose}>
+    <DetailPanel title={`Edit ${purchase.invoiceNo ?? 'Purchase'}`} onClose={onClose}>
       <form onSubmit={submit}>
         <div className="row">
           <div>
@@ -200,17 +228,13 @@ function EditPurchase({
           </div>
           <div>
             <label>Vehicle number (optional)</label>
-            <input
+            <VehiclePicker
+              usualVehicles={usualVehicles}
+              allVehicles={vehicles}
               value={vehicleNumber}
-              onChange={(e) => setVehicleNumber(e.target.value)}
-              placeholder="e.g. KA-05-AB-1234"
-              list="vehicle-numbers-edit"
+              onChange={setVehicleNumber}
+              groupLabel="This vendor's usual trucks"
             />
-            <datalist id="vehicle-numbers-edit">
-              {vehicles.map((v) => (
-                <option key={v.id} value={v.number} />
-              ))}
-            </datalist>
           </div>
         </div>
 
@@ -234,6 +258,6 @@ function EditPurchase({
           </div>
         </div>
       </form>
-    </Modal>
+    </DetailPanel>
   );
 }

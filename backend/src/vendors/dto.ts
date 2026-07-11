@@ -23,3 +23,17 @@ export class UpdateVendorDto {
   @IsOptional() @IsNumber() openingBalance?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
+
+export class AddVendorVehicleDto {
+  @IsString()
+  @IsNotEmpty()
+  vehicleNumber!: string;
+
+  @IsNumber()
+  defaultQuantity!: number;
+}
+
+export class UpdateVendorVehicleDto {
+  @IsNumber()
+  defaultQuantity!: number;
+}

@@ -1,17 +1,14 @@
+import { Link } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 import { useFetch, money, qty, fmtDate } from '../lib/hooks';
 import { Icon } from '../components/Icon';
-import type { DailyReport, Material } from '../types';
-
-interface Outstanding {
-  id: string;
-  name: string;
-  balance: number;
-}
+import type { DailyReport, Material, Outstanding } from '../types';
 
 function monthRange() {
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const to = now.toISOString().slice(0, 10);
+  // Shift to IST before formatting — new Date(y, m, 1).toISOString() rolls back to the
+  // previous day for IST users, since local midnight IST is still the previous UTC day.
+  const to = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+  const from = `${to.slice(0, 7)}-01`;
   return { from, to };
 }
 
@@ -59,7 +56,28 @@ function ReportCards({ report, salesLabel, purchasesLabel, collectedLabel }: {
   );
 }
 
+/** Deterministic pastel-ish color per name, for the small initials avatars below. */
+const AVATAR_PALETTE = ['#ae2a2e', '#2563eb', '#7c3aed', '#059669', '#b8863b', '#0891b2', '#db2777'];
+function avatarColor(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length];
+}
+function initials(name: string) {
+  return name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+}
+
+function stockStatus(stock: number): { label: string; cls: string } {
+  if (stock < 0) return { label: 'Low Stock', cls: 'neg' };
+  if (stock === 0) return { label: 'Out of Stock', cls: 'gray' };
+  return { label: 'In Stock', cls: 'pos' };
+}
+
 export default function Dashboard() {
+  const { user } = useAuth();
+  const can = (p: 'SALES' | 'PURCHASES' | 'PAYMENTS' | 'EXPENSES') =>
+    user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes(p);
+
   const { data: report } = useFetch<DailyReport>('/reports/daily');
   const { from, to } = monthRange();
   const { data: monthReport } = useFetch<DailyReport>(`/reports/summary?from=${from}&to=${to}`);
@@ -86,37 +104,55 @@ export default function Dashboard() {
 
       <ReportCards report={monthReport} salesLabel="Sales this month" purchasesLabel="Purchases this month" collectedLabel="received this month" />
 
-      <div className="grid-2">
+      <div className="grid-3">
         <div className="panel">
-          <h2><Icon name="box" size={17} /> Current Stock</h2>
+          <div className="between" style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+            <h2 style={{ margin: 0, padding: 0, border: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="box" size={17} /> Current Stock
+            </h2>
+            <Link to="/inventory" className="view-all">
+              View All <Icon name="arrow-right" size={14} />
+            </Link>
+          </div>
           <table>
             <thead>
               <tr>
                 <th>Material</th>
                 <th className="num">Stock</th>
                 <th>Unit</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {stock?.map((m) => (
-                <tr key={m.id}>
-                  <td style={{ fontWeight: 500 }}>{m.name}</td>
-                  <td className="num">
-                    {Number(m.currentStock) < 0 ? (
-                      <span className="pill neg">{qty(m.currentStock)}</span>
-                    ) : (
-                      qty(m.currentStock)
-                    )}
-                  </td>
-                  <td className="muted">{m.unit}</td>
+              {stock?.slice(0, 7).map((m) => {
+                const st = stockStatus(Number(m.currentStock));
+                return (
+                  <tr key={m.id}>
+                    <td style={{ fontWeight: 500 }}>{m.name}</td>
+                    <td className="num">{qty(m.currentStock)}</td>
+                    <td className="muted">{m.unit}</td>
+                    <td><span className={`pill ${st.cls}`}>{st.label}</span></td>
+                  </tr>
+                );
+              })}
+              {stock?.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="muted" style={{ padding: 18 }}>No materials yet.</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
 
         <div className="panel">
-          <h2><Icon name="wallet" size={17} /> Outstanding Customers</h2>
+          <div className="between" style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+            <h2 style={{ margin: 0, padding: 0, border: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="wallet" size={17} /> Outstanding Customers
+            </h2>
+            <Link to="/outstanding" className="view-all">
+              View All <Icon name="arrow-right" size={14} />
+            </Link>
+          </div>
           <table>
             <thead>
               <tr>
@@ -126,9 +162,14 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {dues?.length ? (
-                dues.map((d) => (
+                dues.slice(0, 7).map((d) => (
                   <tr key={d.id}>
-                    <td style={{ fontWeight: 500 }}>{d.name}</td>
+                    <td>
+                      <div className="flex" style={{ gap: 10 }}>
+                        <div className="mini-avatar" style={{ background: avatarColor(d.name) }}>{initials(d.name)}</div>
+                        <span style={{ fontWeight: 500 }}>{d.name}</span>
+                      </div>
+                    </td>
                     <td className="num" style={{ color: 'var(--red)', fontWeight: 700 }}>{money(d.balance)}</td>
                   </tr>
                 ))
@@ -139,6 +180,34 @@ export default function Dashboard() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="panel">
+          <h2><Icon name="zap" size={17} /> Quick Actions</h2>
+          <div className="body">
+            <div className="qa-grid">
+              {can('SALES') && (
+                <Link to="/sales?new=1" className="qa-btn">
+                  <div className="qa-icon"><Icon name="cart" size={16} /></div> New Sale
+                </Link>
+              )}
+              {can('PURCHASES') && (
+                <Link to="/purchases?new=1" className="qa-btn">
+                  <div className="qa-icon"><Icon name="truck" size={16} /></div> New Purchase
+                </Link>
+              )}
+              {can('PAYMENTS') && (
+                <Link to="/payments" className="qa-btn">
+                  <div className="qa-icon"><Icon name="wallet" size={16} /></div> Add Payment
+                </Link>
+              )}
+              {can('EXPENSES') && (
+                <Link to="/expenses" className="qa-btn">
+                  <div className="qa-icon"><Icon name="receipt" size={16} /></div> Add Expense
+                </Link>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </>

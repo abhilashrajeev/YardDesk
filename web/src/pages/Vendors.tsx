@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
-import type { Vendor } from '../types';
+import VehicleNumberInput from '../components/VehicleNumberInput';
+import type { Vendor, VendorVehicle } from '../types';
 
 interface LedgerEntry {
   id: string;
@@ -27,6 +28,54 @@ export default function Vendors() {
   const { data: ledger } = useFetch<{ balance: number; entries: LedgerEntry[] }>(
     ledgerFor ? `/accounts/vendors/${ledgerFor.id}/ledger` : null,
   );
+
+  const [vehiclesFor, setVehiclesFor] = useState<Vendor | null>(null);
+  const { data: vendorVehicles, refetch: refetchVendorVehicles } = useFetch<VendorVehicle[]>(
+    vehiclesFor ? `/vendors/${vehiclesFor.id}/vehicles` : null,
+  );
+  const [newVehicleNumber, setNewVehicleNumber] = useState('');
+  const [newVehicleQty, setNewVehicleQty] = useState(0);
+  const [vehicleError, setVehicleError] = useState('');
+
+  async function addVehicle(e: React.FormEvent) {
+    e.preventDefault();
+    if (!vehiclesFor) return;
+    setVehicleError('');
+    if (!newVehicleNumber.trim()) return setVehicleError('Enter a vehicle number.');
+    if (!newVehicleQty || newVehicleQty <= 0) return setVehicleError('Enter a quantity.');
+    try {
+      await api.post(`/vendors/${vehiclesFor.id}/vehicles`, {
+        vehicleNumber: newVehicleNumber.trim(),
+        defaultQuantity: Number(newVehicleQty),
+      });
+      setNewVehicleNumber('');
+      setNewVehicleQty(0);
+      refetchVendorVehicles();
+    } catch (err) {
+      setVehicleError(apiError(err));
+    }
+  }
+
+  async function updateVehicleQty(vv: VendorVehicle, value: number) {
+    if (!vehiclesFor || value === Number(vv.defaultQuantity)) return;
+    try {
+      await api.patch(`/vendors/${vehiclesFor.id}/vehicles/${vv.id}`, { defaultQuantity: value });
+      refetchVendorVehicles();
+    } catch (err) {
+      alert(apiError(err));
+    }
+  }
+
+  async function removeVehicle(vv: VendorVehicle) {
+    if (!vehiclesFor) return;
+    if (!confirm(`Remove ${vv.vehicle.number} from this vendor's usual vehicles?`)) return;
+    try {
+      await api.delete(`/vendors/${vehiclesFor.id}/vehicles/${vv.id}`);
+      refetchVendorVehicles();
+    } catch (err) {
+      alert(apiError(err));
+    }
+  }
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
@@ -124,6 +173,7 @@ export default function Vendors() {
                   <td className="right">
                     <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
                       <button className="btn sm ghost" onClick={() => setLedgerFor(v)}>Ledger</button>
+                      <button className="btn sm ghost" onClick={() => setVehiclesFor(v)}>Vehicles</button>
                       {isAdmin && (
                         <>
                           <button className="btn sm ghost" onClick={() => setEditing(v)}>Edit</button>
@@ -202,6 +252,76 @@ export default function Vendors() {
                     <td className="num">{money(e.balance)}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {vehiclesFor && (
+        <div className="panel">
+          <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+            <strong>{vehiclesFor.name} — Usual Vehicles</strong>
+            <button className="btn sm ghost" onClick={() => setVehiclesFor(null)}>Close</button>
+          </div>
+          <div className="body">
+            <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+              Register the truck(s) this vendor usually sends and the quantity they typically bring.
+              On a new purchase, picking this vendor + vehicle prefills the quantity — still editable
+              for the times it's different.
+            </p>
+            {isAdmin && (
+              <form onSubmit={addVehicle} className="row" style={{ alignItems: 'flex-end' }}>
+                <div>
+                  <label>Vehicle number</label>
+                  <VehicleNumberInput value={newVehicleNumber} onChange={setNewVehicleNumber} />
+                </div>
+                <div>
+                  <label>Usual quantity</label>
+                  <input
+                    type="number"
+                    value={newVehicleQty || ''}
+                    onChange={(e) => setNewVehicleQty(Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <button className="btn sm">Add</button>
+                </div>
+              </form>
+            )}
+            {vehicleError && <div className="err">{vehicleError}</div>}
+            <table style={{ marginTop: 12 }}>
+              <thead>
+                <tr>
+                  <th>Vehicle</th>
+                  <th className="num">Usual quantity</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {vendorVehicles?.map((vv) => (
+                  <tr key={vv.id}>
+                    <td>{vv.vehicle.number}</td>
+                    <td className="num">
+                      <input
+                        type="number"
+                        defaultValue={Number(vv.defaultQuantity)}
+                        style={{ width: 100, textAlign: 'right' }}
+                        onBlur={(e) => updateVehicleQty(vv, Number(e.target.value))}
+                      />
+                    </td>
+                    <td className="right">
+                      {isAdmin && (
+                        <button className="btn sm ghost" onClick={() => removeVehicle(vv)}>Remove</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {vendorVehicles?.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="muted" style={{ padding: 16 }}>No vehicles registered yet.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
