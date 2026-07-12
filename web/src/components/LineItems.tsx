@@ -31,7 +31,10 @@ export default function LineItems({ materials, lines, onChange }: Props) {
 
   return (
     <div>
-      <table>
+      {/* Scrolls horizontally on narrow screens instead of squeezing every column
+          (and its input) down to an unusable few pixels wide. */}
+      <div style={{ overflowX: 'auto' }}>
+      <table style={{ minWidth: 480 }}>
         <thead>
           <tr>
             <th style={{ width: '40%' }}>Material</th>
@@ -100,6 +103,7 @@ export default function LineItems({ materials, lines, onChange }: Props) {
           })}
         </tbody>
       </table>
+      </div>
       <div className="between" style={{ marginTop: 10 }}>
         <button type="button" className="btn ghost sm" onClick={add}>
           + Add Sale

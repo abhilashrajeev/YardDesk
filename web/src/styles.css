@@ -382,7 +382,9 @@ input:focus, select:focus { outline: none; border-color: var(--gold); box-shadow
 /* ---------- Responsive (tablet/mobile) ---------- */
 @media (max-width: 900px) {
   .icon-btn.nav-toggle { display: grid; }
-  .icon-btn.nav-close { display: grid; position: absolute; top: calc(14px + env(safe-area-inset-top)); right: 14px; }
+  /* No extra safe-area offset here — .sidebar's own padding-top already shifts
+     .brand (this button's positioning context) down past the notch. */
+  .icon-btn.nav-close { display: grid; position: absolute; top: 14px; right: 14px; }
 
   .sidebar {
     position: fixed; z-index: 70; left: 0; top: 0;
