@@ -225,7 +225,13 @@ input, select {
   font-size: 16px; background: #fff; color: var(--text); font-family: inherit; transition: border-color 0.14s, box-shadow 0.14s;
 }
 input:focus, select:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(184, 134, 59, 0.16); }
+/* min-width:0 so a field never forces its grid cell wider than the track
+   (grid/flex items default to min-width:auto, sized to their content) — Safari's
+   native date-input widget in particular can want more room than the cell has,
+   otherwise pushing/overlapping past its column instead of just fitting it. */
+input, select { min-width: 0; }
 .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.row > div { min-width: 0; }
 
 /* ---------- Line-item cards (Sales/Purchases material rows) ----------
    A card per line instead of a table row, so on narrow screens the fields
