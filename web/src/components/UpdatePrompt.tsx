@@ -1,12 +1,27 @@
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
+const CHECK_INTERVAL_MS = 60_000;
+
 /**
  * Installed/standalone PWAs have no browser chrome — no address bar, no refresh
  * button, no pull-to-refresh — so there's no obvious way to pick up a new deploy.
  * This surfaces it explicitly instead of leaving people stuck on a stale build.
+ *
+ * A registered service worker only re-checks for an update on browser-driven
+ * events (navigation, etc.) — an installed PWA left open in the background can
+ * go a long time without one of those, so we also poll `registration.update()`
+ * on a timer while the app is open.
  */
 export default function UpdatePrompt() {
-  const { needRefresh: [needRefresh, setNeedRefresh], updateServiceWorker } = useRegisterSW();
+  const {
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegisteredSW(_url, registration) {
+      if (!registration) return;
+      setInterval(() => registration.update(), CHECK_INTERVAL_MS);
+    },
+  });
 
   if (!needRefresh) return null;
 
