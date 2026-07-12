@@ -169,7 +169,7 @@ export default function Mixing() {
                 <label>Quantity produced</label>
                 <input type="number" value={quantity || ''} onChange={(e) => setQuantity(Number(e.target.value))} />
               </div>
-              <div>
+              <div style={{ gridColumn: '1 / -1', maxWidth: 220 }}>
                 <label>Date</label>
                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
               </div>

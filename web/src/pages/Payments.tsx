@@ -149,7 +149,7 @@ export default function Payments() {
               <label>Reference (optional)</label>
               <input value={reference} onChange={(e) => setReference(e.target.value)} />
             </div>
-            <div>
+            <div style={{ gridColumn: '1 / -1', maxWidth: 220 }}>
               <label>Date</label>
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
             </div>
@@ -228,7 +228,7 @@ export default function Payments() {
                 <label>Reference</label>
                 <input value={editing.reference ?? ''} onChange={(e) => setEditing({ ...editing, reference: e.target.value })} />
               </div>
-              <div>
+              <div style={{ gridColumn: '1 / -1', maxWidth: 220 }}>
                 <label>Date</label>
                 <input
                   type="date"

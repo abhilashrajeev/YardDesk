@@ -329,7 +329,7 @@ function EditSale({
               <option value="CREDIT">Credit</option>
             </select>
           </div>
-          <div>
+          <div style={{ gridColumn: '1 / -1', maxWidth: 220 }}>
             <label>Date</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
           </div>

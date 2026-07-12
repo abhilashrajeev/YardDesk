@@ -224,6 +224,16 @@ input, select {
 input:focus, select:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(184, 134, 59, 0.16); }
 .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 14px; }
 
+/* ---------- Line-item cards (Sales/Purchases material rows) ----------
+   A card per line instead of a table row, so on narrow screens the fields
+   reflow into 2-3 columns instead of forcing a table to squeeze or scroll. */
+.li-card { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 12px; margin-bottom: 10px; }
+.li-material { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 10px; }
+.li-material select { flex: 1; }
+.li-remove { flex-shrink: 0; }
+.li-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px; }
+.li-field-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
+
 .btn {
   display: inline-flex; align-items: center; gap: 7px; justify-content: center;
   background: var(--primary); color: #fff; border: none; padding: 10px 17px; border-radius: var(--r-sm);

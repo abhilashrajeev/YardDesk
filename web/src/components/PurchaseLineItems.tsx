@@ -57,85 +57,72 @@ export default function PurchaseLineItems({ materials, lines, onChange }: Props)
 
   return (
     <div>
-      {/* Scrolls horizontally on narrow screens instead of squeezing every column
-          (and its input) down to an unusable few pixels wide. */}
-      <div style={{ overflowX: 'auto' }}>
-      <table style={{ minWidth: 560 }}>
-        <thead>
-          <tr>
-            <th style={{ width: '32%' }}>Material</th>
-            <th>Unit bought in</th>
-            <th className="num">Qty</th>
-            <th className="num">Rate</th>
-            <th className="num">Amount</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((l, i) => {
-            const mat = materials.find((m) => m.id === l.materialId);
-            const units = purchaseUnitsFor(mat);
-            const convertsToOther = l.unit && l.unit !== mat?.unit;
-            return (
-              <tr key={i}>
-                <td>
-                  <select value={l.materialId} onChange={(e) => setMaterial(i, e.target.value)}>
-                    {materials.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <select value={l.unit ?? mat?.unit} onChange={(e) => setUnit(i, e.target.value)}>
-                    {units.map((u) => (
-                      <option key={u} value={u}>{u}</option>
-                    ))}
-                  </select>
-                  {convertsToOther && (
-                    <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
-                      1 {l.unit?.toLowerCase()} = {TON_TO_CFT} {mat?.unit.toLowerCase()}
-                    </div>
-                  )}
-                </td>
-                <td className="num">
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={l.quantity || ''}
-                    onChange={(e) => update(i, { quantity: Number(e.target.value) })}
-                    style={{ textAlign: 'right' }}
-                  />
-                </td>
-                <td className="num">
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={l.rate || ''}
-                    onChange={(e) => update(i, { rate: Number(e.target.value) })}
-                    style={{ textAlign: 'right' }}
-                  />
-                </td>
-                <td className="num">
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={round2(l.quantity * l.rate) || ''}
-                    title={l.quantity ? 'Type an amount to back-solve the rate' : 'Enter a quantity first'}
-                    onChange={(e) => setAmount(i, e.target.value)}
-                    style={{ textAlign: 'right' }}
-                  />
-                </td>
-                <td>
-                  <button type="button" className="btn sm gray" onClick={() => remove(i)}>
-                    ✕
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      </div>
+      <label style={{ marginBottom: 8 }}>Materials</label>
+      {lines.map((l, i) => {
+        const mat = materials.find((m) => m.id === l.materialId);
+        const units = purchaseUnitsFor(mat);
+        const convertsToOther = l.unit && l.unit !== mat?.unit;
+        return (
+          <div key={i} className="li-card">
+            <div className="li-material">
+              <select value={l.materialId} onChange={(e) => setMaterial(i, e.target.value)}>
+                {materials.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+              <button type="button" className="btn sm gray li-remove" onClick={() => remove(i)}>
+                ✕
+              </button>
+            </div>
+            <div className="li-fields">
+              <div>
+                <label className="li-field-label">Unit bought in</label>
+                <select value={l.unit ?? mat?.unit} onChange={(e) => setUnit(i, e.target.value)}>
+                  {units.map((u) => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+                {convertsToOther && (
+                  <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                    1 {l.unit?.toLowerCase()} = {TON_TO_CFT} {mat?.unit.toLowerCase()}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="li-field-label">Qty</label>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={l.quantity || ''}
+                  onChange={(e) => update(i, { quantity: Number(e.target.value) })}
+                  style={{ textAlign: 'right' }}
+                />
+              </div>
+              <div>
+                <label className="li-field-label">Rate</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={l.rate || ''}
+                  onChange={(e) => update(i, { rate: Number(e.target.value) })}
+                  style={{ textAlign: 'right' }}
+                />
+              </div>
+              <div>
+                <label className="li-field-label">Amount</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={round2(l.quantity * l.rate) || ''}
+                  title={l.quantity ? 'Type an amount to back-solve the rate' : 'Enter a quantity first'}
+                  onChange={(e) => setAmount(i, e.target.value)}
+                  style={{ textAlign: 'right' }}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })}
       <div className="between" style={{ marginTop: 10 }}>
         <button type="button" className="btn ghost sm" onClick={add}>
           + Add Purchase
