@@ -4,6 +4,7 @@ import { useFetch, money, qty, fmtDate } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
 import DetailPanel from './DetailPanel';
 import PurchaseLineItems from './PurchaseLineItems';
+import PaymentAllocation from './PaymentAllocation';
 import VehiclePicker, { type UsualVehicle } from './VehiclePicker';
 import type { Purchase, Vendor, Material, Vehicle, VendorVehicle, LineInput } from '../types';
 
@@ -11,15 +12,18 @@ export default function PurchaseDetail({
   id,
   onClose,
   onChange,
+  startInEdit,
 }: {
   id: string;
   onClose: () => void;
   onChange?: () => void;
+  startInEdit?: boolean;
 }) {
   const { data: purchase, refetch } = useFetch<Purchase>(`/purchases/${id}`);
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(!!startInEdit);
+  const [busy, setBusy] = useState(false);
 
   async function removePurchase() {
     if (!confirm('Delete this purchase? Stock and ledger effects will be reversed.')) return;
@@ -29,6 +33,33 @@ export default function PurchaseDetail({
       onClose();
     } catch (e) {
       alert(apiError(e));
+    }
+  }
+
+  async function restorePurchase() {
+    if (!confirm('Restore this purchase? Its stock and ledger effects will be reapplied.')) return;
+    setBusy(true);
+    try {
+      await api.post(`/purchases/${id}/restore`);
+      refetch();
+      onChange?.();
+    } catch (e) {
+      alert(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function hardDeletePurchase() {
+    if (!confirm('Permanently delete this purchase? This cannot be undone — the record itself will be erased (linked payments are kept, just unlinked).')) return;
+    setBusy(true);
+    try {
+      await api.delete(`/purchases/${id}/permanent`);
+      onChange?.();
+      onClose();
+    } catch (e) {
+      alert(apiError(e));
+      setBusy(false);
     }
   }
 
@@ -107,12 +138,33 @@ export default function PurchaseDetail({
         </span>
       </div>
 
+      {purchase.status !== 'CANCELLED' && (
+        <PaymentAllocation
+          payments={purchase.payments ?? []}
+          partyType="VENDOR"
+          partyId={purchase.vendorId}
+          txnId={purchase.id}
+          canEdit={isAdmin}
+          onChange={refetch}
+        />
+      )}
+
       {isAdmin && purchase.status !== 'CANCELLED' && (
         <div className="between" style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <div />
           <div className="flex" style={{ gap: 6 }}>
             <button className="btn ghost sm" onClick={() => setEditing(true)}>Edit</button>
             <button className="btn ghost sm" onClick={removePurchase}>Delete</button>
+          </div>
+        </div>
+      )}
+
+      {isAdmin && purchase.status === 'CANCELLED' && (
+        <div className="between" style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <span className="muted" style={{ fontSize: 13 }}>This purchase was deleted.</span>
+          <div className="flex" style={{ gap: 6 }}>
+            <button className="btn ghost sm" disabled={busy} onClick={restorePurchase}>Restore</button>
+            <button className="btn ghost sm" disabled={busy} onClick={hardDeletePurchase}>Delete Permanently</button>
           </div>
         </div>
       )}
@@ -136,6 +188,7 @@ function EditPurchase({
   const { data: vehicles } = useFetch<Vehicle[]>('/vehicles');
 
   const [vendorId, setVendorId] = useState(purchase.vendorId ?? '');
+  const [date, setDate] = useState(purchase.date.slice(0, 10));
   const [invoiceNo, setInvoiceNo] = useState(purchase.invoiceNo ?? '');
   const [vehicleNumber, setVehicleNumber] = useState(purchase.vehicle?.number ?? '');
   const [vendorVehicles, setVendorVehicles] = useState<VendorVehicle[]>([]);
@@ -196,6 +249,7 @@ function EditPurchase({
       await api.patch(`/purchases/${purchase.id}`, {
         vendorId,
         vehicleId,
+        date,
         invoiceNo: invoiceNo || undefined,
         freight: Number(freight),
         items,
@@ -235,6 +289,10 @@ function EditPurchase({
               onChange={setVehicleNumber}
               groupLabel="This vendor's usual trucks"
             />
+          </div>
+          <div>
+            <label>Date</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
           </div>
         </div>
 

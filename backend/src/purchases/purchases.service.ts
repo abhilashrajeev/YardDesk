@@ -11,6 +11,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../inventory/stock.service';
 import { LedgerService } from '../accounts/ledger.service';
+import { PaymentsService } from '../accounts/payments.service';
 import { AuditService } from '../audit/audit.service';
 import { CreatePurchaseDto, UpdatePurchaseDto } from './dto';
 import { round2 } from '../common/money';
@@ -31,11 +32,11 @@ function daysSince(date: Date): number {
  * model's own `status: TxnStatus` (confirmed/cancelled).
  */
 function withPurchaseStatus<
-  T extends { total: unknown; date: Date; payments: { amount: unknown; direction: PaymentDirection }[] },
+  T extends { total: unknown; date: Date; payments: { amount: unknown; direction: PaymentDirection; voided?: boolean }[] },
 >(purchase: T): T & { paidAmount: number; balance: number; paymentStatus: PurchaseStatus } {
   const total = Number(purchase.total);
   const paid = purchase.payments
-    .filter((p) => p.direction === PaymentDirection.OUT)
+    .filter((p) => p.direction === PaymentDirection.OUT && !p.voided)
     .reduce((s, p) => s + Number(p.amount), 0);
   const balance = round2(total - paid);
 
@@ -53,8 +54,31 @@ export class PurchasesService {
     private prisma: PrismaService,
     private stock: StockService,
     private ledger: LedgerService,
+    private payments: PaymentsService,
     private audit: AuditService,
   ) {}
+
+  /**
+   * Human-readable label for a purchase in ledger/audit text: the vendor's own
+   * invoice # if one was entered, otherwise the material(s) purchased (rather
+   * than falling back to the raw internal record id, which means nothing to
+   * a reader of the ledger).
+   */
+  private async purchaseLabel(
+    tx: Prisma.TransactionClient,
+    purchase: { id: string; invoiceNo: string | null },
+    items: { materialId: string }[],
+  ): Promise<string> {
+    if (purchase.invoiceNo) return purchase.invoiceNo;
+    if (!items.length) return purchase.id;
+    const materials = await tx.material.findMany({
+      where: { id: { in: [...new Set(items.map((i) => i.materialId))] } },
+      select: { id: true, name: true },
+    });
+    const byId = new Map(materials.map((m) => [m.id, m.name]));
+    const names = [...new Set(items.map((i) => byId.get(i.materialId)).filter((n): n is string => !!n))];
+    return names.length ? names.join(', ') : purchase.id;
+  }
 
   async create(dto: CreatePurchaseDto, userId: string) {
     if (dto.clientUuid) {
@@ -128,11 +152,13 @@ export class PurchasesService {
         });
       }
 
+      const label = await this.purchaseLabel(tx, purchase, items);
+
       // We now owe the vendor the full total.
       await this.ledger.post(tx, {
         partyType: PartyType.VENDOR,
         vendorId: dto.vendorId,
-        description: `Purchase ${purchase.invoiceNo ?? purchase.id}`,
+        description: `Purchase ${label}`,
         credit: total,
         refType: 'PURCHASE',
         refId: purchase.id,
@@ -157,7 +183,7 @@ export class PurchasesService {
         await this.ledger.post(tx, {
           partyType: PartyType.VENDOR,
           vendorId: dto.vendorId,
-          description: `Payment for purchase ${purchase.invoiceNo ?? purchase.id}`,
+          description: `Payment for purchase ${label}`,
           debit: paid,
           refType: 'PAYMENT',
           refId: payment.id,
@@ -188,7 +214,7 @@ export class PurchasesService {
         vendor: { select: { name: true } },
         vehicle: { select: { number: true } },
         items: true,
-        payments: { select: { amount: true, direction: true } },
+        payments: { select: { amount: true, direction: true, voided: true } },
       },
     });
     return purchases.map(withPurchaseStatus);
@@ -201,7 +227,7 @@ export class PurchasesService {
       orderBy: { date: 'desc' },
       include: {
         vendor: { select: { name: true } },
-        payments: { select: { amount: true, direction: true } },
+        payments: { select: { amount: true, direction: true, voided: true } },
       },
     });
     return purchases.map(withPurchaseStatus).filter((p) => p.paymentStatus !== 'PAID');
@@ -253,7 +279,7 @@ export class PurchasesService {
     await this.ledger.post(tx, {
       partyType: PartyType.VENDOR,
       vendorId: purchase.vendorId,
-      description: `Reversal of purchase ${purchase.invoiceNo ?? purchase.id}`,
+      description: `Reversal of purchase ${await this.purchaseLabel(tx, purchase, items)}`,
       debit: Number(purchase.total),
       refType: 'PURCHASE_REVERSAL',
       refId: purchase.id,
@@ -331,10 +357,11 @@ export class PurchasesService {
           date,
         });
       }
+      const label = await this.purchaseLabel(tx, purchase, items);
       await this.ledger.post(tx, {
         partyType: PartyType.VENDOR,
         vendorId,
-        description: `Purchase ${purchase.invoiceNo ?? purchase.id} (edited)`,
+        description: `Purchase ${label} (edited)`,
         credit: total,
         refType: 'PURCHASE',
         refId: purchase.id,
@@ -346,7 +373,7 @@ export class PurchasesService {
           entityType: 'PURCHASE',
           entityId: id,
           action: AuditAction.UPDATE,
-          summary: `Purchase ${purchase.invoiceNo ?? purchase.id} edited — total ₹${Number(existing.total)} → ₹${total}`,
+          summary: `Purchase ${label} edited — total ₹${Number(existing.total)} → ₹${total}`,
           before: existing,
           after: purchase,
           userId,
@@ -358,7 +385,13 @@ export class PurchasesService {
     }, TXN_OPTIONS);
   }
 
-  /** Delete a purchase: reverses its stock/ledger effect and marks it cancelled (kept for the audit trail). */
+  /**
+   * Delete a purchase: reverses its stock/ledger effect and marks it cancelled
+   * (kept for the audit trail). Any payment still linked to it is auto-voided
+   * too — in real life, cancelling something already paid for means the vendor
+   * returns the money, so the balance should net back to ₹0, not go negative
+   * (which would otherwise misread as the vendor owing us an advance).
+   */
   async remove(id: string, userId: string) {
     const existing = await this.prisma.purchase.findUnique({ where: { id }, include: { items: true } });
     if (!existing) throw new NotFoundException('Purchase not found');
@@ -366,19 +399,117 @@ export class PurchasesService {
 
     return this.prisma.$transaction(async (tx) => {
       await this.reverseEffects(tx, existing, existing.items, existing.date);
+      const label = await this.purchaseLabel(tx, existing, existing.items);
+
+      const linkedPayments = await tx.payment.findMany({ where: { purchaseId: id, voided: false } });
+      for (const payment of linkedPayments) {
+        await this.payments.voidWithinTx(tx, payment, userId, `purchase ${label} was deleted`);
+      }
+
       const purchase = await tx.purchase.update({ where: { id }, data: { status: TxnStatus.CANCELLED } });
       await this.audit.log(
         {
           entityType: 'PURCHASE',
           entityId: id,
           action: AuditAction.DELETE,
-          summary: `Purchase ${existing.invoiceNo ?? existing.id} deleted — was ₹${Number(existing.total)}`,
+          summary: `Purchase ${label} deleted — was ₹${Number(existing.total)}`,
           before: existing,
           userId,
         },
         tx,
       );
       return purchase;
+    }, TXN_OPTIONS);
+  }
+
+  /**
+   * Undo a cancellation: reapplies the original stock/ledger effects, sets it
+   * back to CONFIRMED, and un-voids any payment that was auto-voided when it
+   * was cancelled — restore is a full undo of delete, symmetric in both directions.
+   */
+  async restore(id: string, userId: string) {
+    const existing = await this.prisma.purchase.findUnique({ where: { id }, include: { items: true } });
+    if (!existing) throw new NotFoundException('Purchase not found');
+    if (existing.status !== TxnStatus.CANCELLED) {
+      throw new BadRequestException('Only a cancelled purchase can be restored.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const it of existing.items) {
+        const material = await tx.material.findUnique({ where: { id: it.materialId } });
+        const stockQty = convertQty(Number(it.quantity), it.unit ?? material!.unit, material!.unit);
+        await this.stock.apply(tx, {
+          materialId: it.materialId,
+          direction: StockDirection.IN,
+          quantity: stockQty,
+          refType: 'PURCHASE_RESTORE',
+          refId: existing.id,
+          date: new Date(),
+        });
+      }
+      const label = await this.purchaseLabel(tx, existing, existing.items);
+      await this.ledger.post(tx, {
+        partyType: PartyType.VENDOR,
+        vendorId: existing.vendorId,
+        description: `Restoration of purchase ${label}`,
+        credit: Number(existing.total),
+        refType: 'PURCHASE_RESTORE',
+        refId: existing.id,
+        date: new Date(),
+      });
+
+      const voidedPayments = await tx.payment.findMany({ where: { purchaseId: id, voided: true } });
+      for (const payment of voidedPayments) {
+        await this.payments.unvoidWithinTx(tx, payment, userId, `purchase ${label} was restored`);
+      }
+
+      const purchase = await tx.purchase.update({ where: { id }, data: { status: TxnStatus.CONFIRMED } });
+      await this.audit.log(
+        {
+          entityType: 'PURCHASE',
+          entityId: id,
+          action: AuditAction.UPDATE,
+          summary: `Purchase ${label} restored — ₹${Number(existing.total)}`,
+          before: existing,
+          after: purchase,
+          userId,
+        },
+        tx,
+      );
+      return purchase;
+    }, TXN_OPTIONS);
+  }
+
+  /**
+   * Permanently erases a cancelled purchase — only reachable once it's already
+   * cancelled (money/stock already reversed). Any payment still linked to it
+   * is unlinked (kept — it's a separate real fact) rather than deleted.
+   * Ledger/audit history rows referencing this purchase's id are left as-is;
+   * they don't have a hard foreign key to it and remain valid historical records.
+   */
+  async hardDelete(id: string, userId: string) {
+    const existing = await this.prisma.purchase.findUnique({ where: { id }, include: { items: true } });
+    if (!existing) throw new NotFoundException('Purchase not found');
+    if (existing.status !== TxnStatus.CANCELLED) {
+      throw new BadRequestException('Only a cancelled purchase can be permanently deleted — delete it first.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const label = await this.purchaseLabel(tx, existing, existing.items);
+      await tx.payment.updateMany({ where: { purchaseId: id }, data: { purchaseId: null } });
+      await tx.purchase.delete({ where: { id } });
+      await this.audit.log(
+        {
+          entityType: 'PURCHASE',
+          entityId: id,
+          action: AuditAction.DELETE,
+          summary: `Purchase ${label} permanently deleted — was ₹${Number(existing.total)}`,
+          before: existing,
+          userId,
+        },
+        tx,
+      );
+      return { success: true };
     }, TXN_OPTIONS);
   }
 }

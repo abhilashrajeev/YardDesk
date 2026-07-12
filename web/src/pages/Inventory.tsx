@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, qty, fmtDate } from '../lib/hooks';
+import { downloadCsv } from '../lib/csv';
 import { useAuth } from '../auth/AuthContext';
 import type { Material } from '../types';
 
@@ -69,9 +70,26 @@ export default function Inventory() {
     }
   }
 
+  function exportCsv() {
+    downloadCsv(
+      'stock',
+      [
+        { header: 'Material', value: (m: Material) => m.name },
+        { header: 'Unit', value: (m: Material) => m.unit },
+        { header: 'Current Stock', value: (m: Material) => m.currentStock },
+        { header: 'Default Rate', value: (m: Material) => m.defaultRate ?? '' },
+        { header: 'Purchase Rate', value: (m: Material) => m.purchaseRate ?? '' },
+      ],
+      stock ?? [],
+    );
+  }
+
   return (
     <>
-      <h2 style={{ marginTop: 0 }}>Stock Monitoring</h2>
+      <div className="between" style={{ marginTop: 0, marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>Stock Monitoring</h2>
+        <button className="btn ghost" onClick={exportCsv} disabled={!stock?.length}>Export CSV</button>
+      </div>
       <div className="panel">
         <h2>Current Stock</h2>
         <div className="body" style={{ padding: 0 }}>

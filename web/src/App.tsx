@@ -8,6 +8,7 @@ import Purchases from './pages/Purchases';
 import Payments from './pages/Payments';
 import Outstanding from './pages/Outstanding';
 import Inventory from './pages/Inventory';
+import Mixing from './pages/Mixing';
 import Customers from './pages/Customers';
 import Vendors from './pages/Vendors';
 import Materials from './pages/Materials';
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="payments" element={<Payments />} />
         <Route path="outstanding" element={<Outstanding />} />
         <Route path="inventory" element={<Inventory />} />
+        <Route path="mixing" element={<Mixing />} />
         <Route path="customers" element={<Customers />} />
         <Route path="vendors" element={<Vendors />} />
         <Route path="materials" element={<Materials />} />

@@ -15,6 +15,7 @@ const TITLES: Record<string, string> = {
   '/payments': 'Payments',
   '/outstanding': 'Outstanding & Pending',
   '/inventory': 'Stock Monitoring',
+  '/mixing': 'Mixing',
   '/customers': 'Customers',
   '/vendors': 'Vendors',
   '/materials': 'Materials',
@@ -63,6 +64,7 @@ export default function Layout() {
     ...(can('PAYMENTS') ? [{ path: '/payments', label: TITLES['/payments'] }] : []),
     { path: '/outstanding', label: TITLES['/outstanding'] },
     ...(can('STOCK') ? [{ path: '/inventory', label: TITLES['/inventory'] }] : []),
+    ...(can('STOCK') ? [{ path: '/mixing', label: TITLES['/mixing'] }] : []),
     ...(can('EXPENSES') ? [{ path: '/expenses', label: TITLES['/expenses'] }] : []),
     { path: '/customers', label: TITLES['/customers'] },
     { path: '/vendors', label: TITLES['/vendors'] },
@@ -120,6 +122,11 @@ export default function Layout() {
           {can('STOCK') && (
             <NavLink to="/inventory" className={link}>
               <Icon name="box" size={18} /> Stock
+            </NavLink>
+          )}
+          {can('STOCK') && (
+            <NavLink to="/mixing" className={link}>
+              <Icon name="blend" size={18} /> Mixing
             </NavLink>
           )}
           {can('EXPENSES') && (

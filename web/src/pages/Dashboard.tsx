@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useFetch, money, qty, fmtDate } from '../lib/hooks';
 import { Icon } from '../components/Icon';
+import TrendChart from '../components/TrendChart';
 import type { DailyReport, Material, Outstanding } from '../types';
 
 function monthRange() {
@@ -10,6 +11,21 @@ function monthRange() {
   const to = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
   const from = `${to.slice(0, 7)}-01`;
   return { from, to };
+}
+
+/** Trailing 14-day window (IST), for the dashboard's at-a-glance trend chart. */
+function last14DaysRange() {
+  const now = new Date(Date.now() + 5.5 * 3600 * 1000);
+  const to = now.toISOString().slice(0, 10);
+  const fromDate = new Date(now.getTime() - 13 * 86400000);
+  const from = fromDate.toISOString().slice(0, 10);
+  return { from, to };
+}
+
+interface SeriesPoint {
+  bucket: string;
+  sales: number;
+  purchases: number;
 }
 
 function ReportCards({ report, salesLabel, purchasesLabel, collectedLabel }: {
@@ -75,6 +91,7 @@ function stockStatus(stock: number): { label: string; cls: string } {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const can = (p: 'SALES' | 'PURCHASES' | 'PAYMENTS' | 'EXPENSES') =>
     user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes(p);
 
@@ -83,10 +100,42 @@ export default function Dashboard() {
   const { data: monthReport } = useFetch<DailyReport>(`/reports/summary?from=${from}&to=${to}`);
   const { data: stock } = useFetch<Material[]>('/inventory');
   const { data: dues } = useFetch<Outstanding[]>('/accounts/outstanding/customers');
+  const trendRange = last14DaysRange();
+  const { data: series } = useFetch<SeriesPoint[]>(
+    isAdmin ? `/reports/series?from=${trendRange.from}&to=${trendRange.to}&granularity=day` : null,
+  );
 
   return (
     <>
-      <div className="page-head">
+      <div className="panel">
+        <h2><Icon name="zap" size={17} /> Quick Actions</h2>
+        <div className="body">
+          <div className="qa-bar">
+            {can('SALES') && (
+              <Link to="/sales?new=1" className="qa-btn">
+                <div className="qa-icon"><Icon name="cart" size={16} /></div> New Sale
+              </Link>
+            )}
+            {can('PURCHASES') && (
+              <Link to="/purchases?new=1" className="qa-btn">
+                <div className="qa-icon"><Icon name="truck" size={16} /></div> New Purchase
+              </Link>
+            )}
+            {can('PAYMENTS') && (
+              <Link to="/payments" className="qa-btn">
+                <div className="qa-icon"><Icon name="wallet" size={16} /></div> Add Payment
+              </Link>
+            )}
+            {can('EXPENSES') && (
+              <Link to="/expenses" className="qa-btn">
+                <div className="qa-icon"><Icon name="receipt" size={16} /></div> Add Expense
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="page-head" style={{ marginTop: 24 }}>
         <div>
           <h2>Today at a glance</h2>
           <div className="sub">{report ? fmtDate(report.from) : ''}</div>
@@ -104,7 +153,23 @@ export default function Dashboard() {
 
       <ReportCards report={monthReport} salesLabel="Sales this month" purchasesLabel="Purchases this month" collectedLabel="received this month" />
 
-      <div className="grid-3">
+      {isAdmin && (
+        <div className="panel" style={{ marginTop: 24 }}>
+          <div className="between" style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+            <h2 style={{ margin: 0, padding: 0, border: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="chart" size={17} /> Sales &amp; Purchases — Last 14 Days
+            </h2>
+            <Link to="/reports" className="view-all">
+              Full Reports <Icon name="arrow-right" size={14} />
+            </Link>
+          </div>
+          <div className="body">
+            <TrendChart data={series ?? []} />
+          </div>
+        </div>
+      )}
+
+      <div className="grid-2" style={{ marginTop: 24 }}>
         <div className="panel">
           <div className="between" style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
             <h2 style={{ margin: 0, padding: 0, border: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -180,34 +245,6 @@ export default function Dashboard() {
               )}
             </tbody>
           </table>
-        </div>
-
-        <div className="panel">
-          <h2><Icon name="zap" size={17} /> Quick Actions</h2>
-          <div className="body">
-            <div className="qa-grid">
-              {can('SALES') && (
-                <Link to="/sales?new=1" className="qa-btn">
-                  <div className="qa-icon"><Icon name="cart" size={16} /></div> New Sale
-                </Link>
-              )}
-              {can('PURCHASES') && (
-                <Link to="/purchases?new=1" className="qa-btn">
-                  <div className="qa-icon"><Icon name="truck" size={16} /></div> New Purchase
-                </Link>
-              )}
-              {can('PAYMENTS') && (
-                <Link to="/payments" className="qa-btn">
-                  <div className="qa-icon"><Icon name="wallet" size={16} /></div> Add Payment
-                </Link>
-              )}
-              {can('EXPENSES') && (
-                <Link to="/expenses" className="qa-btn">
-                  <div className="qa-icon"><Icon name="receipt" size={16} /></div> Add Expense
-                </Link>
-              )}
-            </div>
-          </div>
         </div>
       </div>
     </>

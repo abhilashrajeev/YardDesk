@@ -49,6 +49,27 @@ export interface Material {
   purchaseRateTon?: string | null;
 }
 
+export interface ProductionInput {
+  id: string;
+  materialId: string;
+  quantity: string;
+  rate: string;
+  material: { name: string; unit: Unit };
+}
+
+export interface Production {
+  id: string;
+  date: string;
+  materialId: string;
+  material: { name: string; unit: Unit };
+  quantity: string;
+  costPerUnit: string;
+  status: TxnStatus;
+  notes?: string | null;
+  createdBy?: { name: string };
+  inputs: ProductionInput[];
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -140,6 +161,7 @@ export interface Sale {
   paidAmount?: number;
   balance?: number;
   paymentStatus?: PaymentStatus;
+  payments?: Payment[];
   gatePass?: { passNo: string | null } | null;
   loadingPass?: { passNo: string | null } | null;
   status?: TxnStatus;
@@ -161,6 +183,7 @@ export interface Purchase {
   paidAmount?: number;
   balance?: number;
   paymentStatus?: PaymentStatus;
+  payments?: Payment[];
   status?: TxnStatus;
   notes?: string | null;
 }
@@ -178,6 +201,8 @@ export interface Payment {
   vendorId?: string | null;
   customer?: { name: string } | null;
   vendor?: { name: string } | null;
+  saleId?: string | null;
+  purchaseId?: string | null;
   voided?: boolean;
 }
 

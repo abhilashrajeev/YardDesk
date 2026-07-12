@@ -1,5 +1,5 @@
 import type { Material, LineInput } from '../types';
-import { money } from '../lib/hooks';
+import { money, round2 } from '../lib/hooks';
 
 interface Props {
   materials: Material[];
@@ -18,10 +18,10 @@ export default function LineItems({ materials, lines, onChange }: Props) {
     const amount = Number(amountStr);
     const qty = lines[i].quantity;
     if (!qty || Number.isNaN(amount)) return;
-    update(i, { rate: amount / qty });
+    update(i, { rate: round2(amount / qty) });
   }
   function add() {
-    onChange([...lines, { materialId: materials[0]?.id ?? '', quantity: 0, rate: 0 }]);
+    onChange([...lines, { materialId: materials[0]?.id ?? '', quantity: 0, rate: Number(materials[0]?.defaultRate ?? 0) }]);
   }
   function remove(i: number) {
     onChange(lines.filter((_, idx) => idx !== i));
@@ -47,7 +47,13 @@ export default function LineItems({ materials, lines, onChange }: Props) {
             return (
               <tr key={i}>
                 <td>
-                  <select value={l.materialId} onChange={(e) => update(i, { materialId: e.target.value })}>
+                  <select
+                    value={l.materialId}
+                    onChange={(e) => {
+                      const newMat = materials.find((m) => m.id === e.target.value);
+                      update(i, { materialId: e.target.value, rate: Number(newMat?.defaultRate ?? 0) });
+                    }}
+                  >
                     {materials.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name} ({m.unit})
@@ -78,7 +84,7 @@ export default function LineItems({ materials, lines, onChange }: Props) {
                   <input
                     type="number"
                     step="0.01"
-                    value={(l.quantity * l.rate) || ''}
+                    value={round2(l.quantity * l.rate) || ''}
                     title={l.quantity ? 'Type an amount to back-solve the rate' : 'Enter a quantity first'}
                     onChange={(e) => setAmount(i, e.target.value)}
                     style={{ textAlign: 'right' }}
@@ -96,7 +102,7 @@ export default function LineItems({ materials, lines, onChange }: Props) {
       </table>
       <div className="between" style={{ marginTop: 10 }}>
         <button type="button" className="btn ghost sm" onClick={add}>
-          + Add line
+          + Add Sale
         </button>
         <div>
           Subtotal: <strong>{money(subTotal)}</strong>

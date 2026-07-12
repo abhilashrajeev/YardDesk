@@ -42,6 +42,7 @@ export default function Expenses() {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState(0);
   const [mode, setMode] = useState<PaymentMode>('CASH');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -53,11 +54,12 @@ export default function Expenses() {
     if (!amount || amount <= 0) return setError('Enter a valid amount.');
     setSaving(true);
     try {
-      await api.post('/expenses', { category: category.trim(), description: description || undefined, amount: Number(amount), mode });
+      await api.post('/expenses', { category: category.trim(), description: description || undefined, amount: Number(amount), mode, date });
       setCategory(storedCategories[0] ?? '');
       setDescription('');
       setAmount(0);
       setMode('CASH');
+      setDate(new Date().toISOString().slice(0, 10));
       refetch();
     } catch (err) {
       setError(apiError(err));
@@ -77,6 +79,7 @@ export default function Expenses() {
         description: editing.description || undefined,
         amount: Number(editing.amount),
         mode: editing.mode,
+        date: editing.date.slice(0, 10),
       });
       setEditing(null);
       refetch();
@@ -154,6 +157,10 @@ export default function Expenses() {
                 <option value="UPI">UPI</option>
                 <option value="BANK">Bank</option>
               </select>
+            </div>
+            <div>
+              <label>Date</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
             </div>
           </div>
           {error && <div className="err">{error}</div>}
@@ -243,6 +250,15 @@ export default function Expenses() {
                   <option value="UPI">UPI</option>
                   <option value="BANK">Bank</option>
                 </select>
+              </div>
+              <div>
+                <label>Date</label>
+                <input
+                  type="date"
+                  value={editing.date.slice(0, 10)}
+                  onChange={(e) => setEditing({ ...editing, date: e.target.value })}
+                  max={new Date().toISOString().slice(0, 10)}
+                />
               </div>
             </div>
             {error && <div className="err">{error}</div>}

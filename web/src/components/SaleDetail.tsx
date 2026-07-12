@@ -4,6 +4,7 @@ import { useFetch, money, qty, fmtDate } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
 import DetailPanel from './DetailPanel';
 import LineItems from './LineItems';
+import PaymentAllocation from './PaymentAllocation';
 import CustomerPicker from './CustomerPicker';
 import VehiclePicker, { type UsualVehicle } from './VehiclePicker';
 import type { Sale, Customer, Material, Vehicle, CustomerVehicle, LineInput, PaymentMode } from '../types';
@@ -12,15 +13,18 @@ export default function SaleDetail({
   id,
   onClose,
   onChange,
+  startInEdit,
 }: {
   id: string;
   onClose: () => void;
   onChange?: () => void;
+  startInEdit?: boolean;
 }) {
   const { data: sale, refetch } = useFetch<Sale>(`/sales/${id}`);
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(!!startInEdit);
+  const [busy, setBusy] = useState(false);
 
   async function issuePass(kind: 'gate-pass' | 'loading-pass') {
     try {
@@ -40,6 +44,33 @@ export default function SaleDetail({
       onClose();
     } catch (e) {
       alert(apiError(e));
+    }
+  }
+
+  async function restoreSale() {
+    if (!confirm('Restore this sale? Its stock and ledger effects will be reapplied.')) return;
+    setBusy(true);
+    try {
+      await api.post(`/sales/${id}/restore`);
+      refetch();
+      onChange?.();
+    } catch (e) {
+      alert(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function hardDeleteSale() {
+    if (!confirm('Permanently delete this sale? This cannot be undone — the record itself will be erased (linked payments are kept, just unlinked).')) return;
+    setBusy(true);
+    try {
+      await api.delete(`/sales/${id}/permanent`);
+      onChange?.();
+      onClose();
+    } catch (e) {
+      alert(apiError(e));
+      setBusy(false);
     }
   }
 
@@ -129,6 +160,17 @@ export default function SaleDetail({
         </span>
       </div>
 
+      {sale.status !== 'CANCELLED' && (
+        <PaymentAllocation
+          payments={sale.payments ?? []}
+          partyType="CUSTOMER"
+          partyId={sale.customerId}
+          txnId={sale.id}
+          canEdit={isAdmin}
+          onChange={refetch}
+        />
+      )}
+
       <div className="between" style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
         <div className="flex">
           {sale.gatePass ? (
@@ -146,6 +188,13 @@ export default function SaleDetail({
           <div className="flex" style={{ gap: 6 }}>
             <button className="btn ghost sm" onClick={() => setEditing(true)}>Edit</button>
             <button className="btn ghost sm" onClick={removeSale}>Delete</button>
+          </div>
+        )}
+        {isAdmin && sale.status === 'CANCELLED' && (
+          <div className="flex" style={{ gap: 6 }}>
+            <span className="muted" style={{ fontSize: 13, alignSelf: 'center' }}>This sale was deleted.</span>
+            <button className="btn ghost sm" disabled={busy} onClick={restoreSale}>Restore</button>
+            <button className="btn ghost sm" disabled={busy} onClick={hardDeleteSale}>Delete Permanently</button>
           </div>
         )}
       </div>
@@ -169,6 +218,7 @@ function EditSale({
   const { data: vehicles } = useFetch<Vehicle[]>('/vehicles');
 
   const [customerId, setCustomerId] = useState(sale.customerId ?? '');
+  const [date, setDate] = useState(sale.date.slice(0, 10));
   const [vehicleNumber, setVehicleNumber] = useState(sale.vehicle?.number ?? '');
   const [customerVehicles, setCustomerVehicles] = useState<CustomerVehicle[]>([]);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>(sale.paymentMode);
@@ -231,6 +281,7 @@ function EditSale({
       await api.patch(`/sales/${sale.id}`, {
         customerId,
         vehicleId,
+        date,
         paymentMode,
         freight: Number(freight),
         discount: Number(discount),
@@ -277,6 +328,10 @@ function EditSale({
               <option value="BANK">Bank</option>
               <option value="CREDIT">Credit</option>
             </select>
+          </div>
+          <div>
+            <label>Date</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
           </div>
         </div>
 

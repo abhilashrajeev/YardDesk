@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate } from '../lib/hooks';
+import { downloadCsv } from '../lib/csv';
 import { useAuth } from '../auth/AuthContext';
+import ExportCsvButton from '../components/ExportCsvButton';
 import type { Customer, Vendor, Payment, PaymentMode } from '../types';
 
 export default function Payments() {
@@ -17,6 +19,7 @@ export default function Payments() {
   const [mode, setMode] = useState<PaymentMode>('CASH');
   const [amount, setAmount] = useState(0);
   const [reference, setReference] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -41,12 +44,14 @@ export default function Payments() {
         mode,
         amount: Number(amount),
         reference: reference || undefined,
+        date,
       });
       setMsg('Payment recorded.');
       setPartyId('');
       setMode('CASH');
       setAmount(0);
       setReference('');
+      setDate(new Date().toISOString().slice(0, 10));
       refetch();
     } catch (err) {
       setError(apiError(err));
@@ -64,6 +69,7 @@ export default function Payments() {
         mode: editing.mode,
         amount: Number(editing.amount),
         reference: editing.reference || undefined,
+        date: editing.date.slice(0, 10),
       });
       setEditing(null);
       refetch();
@@ -84,9 +90,29 @@ export default function Payments() {
     }
   }
 
+  async function exportCsv(exportFrom: string, exportTo: string) {
+    const { data } = await api.get<Payment[]>(`/accounts/payments?from=${exportFrom}&to=${exportTo}`);
+    downloadCsv(
+      `payments-${exportFrom}-${exportTo}`,
+      [
+        { header: 'Date', value: (p: Payment) => fmtDate(p.date) },
+        { header: 'Party', value: (p: Payment) => p.customer?.name ?? p.vendor?.name ?? '' },
+        { header: 'Direction', value: (p: Payment) => p.direction },
+        { header: 'Mode', value: (p: Payment) => p.mode },
+        { header: 'Amount', value: (p: Payment) => p.amount },
+        { header: 'Reference', value: (p: Payment) => p.reference ?? '' },
+        { header: 'Status', value: (p: Payment) => (p.voided ? 'Voided' : 'Active') },
+      ],
+      data,
+    );
+  }
+
   return (
     <>
-      <h2 style={{ marginTop: 0 }}>Payments</h2>
+      <div className="between" style={{ marginTop: 0, marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>Payments</h2>
+        <ExportCsvButton onExport={exportCsv} />
+      </div>
       {canCreate && (
       <form className="panel" onSubmit={submit}>
         <h2>Record Payment</h2>
@@ -122,6 +148,10 @@ export default function Payments() {
             <div>
               <label>Reference (optional)</label>
               <input value={reference} onChange={(e) => setReference(e.target.value)} />
+            </div>
+            <div>
+              <label>Date</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
             </div>
           </div>
           {error && !editing && <div className="err">{error}</div>}
@@ -197,6 +227,15 @@ export default function Payments() {
               <div>
                 <label>Reference</label>
                 <input value={editing.reference ?? ''} onChange={(e) => setEditing({ ...editing, reference: e.target.value })} />
+              </div>
+              <div>
+                <label>Date</label>
+                <input
+                  type="date"
+                  value={editing.date.slice(0, 10)}
+                  onChange={(e) => setEditing({ ...editing, date: e.target.value })}
+                  max={new Date().toISOString().slice(0, 10)}
+                />
               </div>
             </div>
             {error && <div className="err">{error}</div>}

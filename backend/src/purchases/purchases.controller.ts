@@ -43,4 +43,14 @@ export class PurchasesController {
   remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.purchases.remove(id, user.userId);
   }
+
+  @Post(':id/restore')
+  restore(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.purchases.restore(id, user.userId);
+  }
+
+  @Delete(':id/permanent')
+  hardDelete(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.purchases.hardDelete(id, user.userId);
+  }
 }

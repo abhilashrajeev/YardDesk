@@ -105,6 +105,7 @@ model User {
   notifications Notification[]
   expenses      Expense[]
   auditLogs     AuditLog[]
+  productions   Production[]
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +134,8 @@ model Material {
   saleItems     SaleItem[]
   stockMovements StockMovement[]
   dayCloses     DayClose[]
+  productionOutputs Production[]      @relation("ProductionOutput")
+  productionInputs  ProductionInput[] @relation("ProductionInput")
 }
 
 model Customer {
@@ -417,13 +420,46 @@ model StockMovement {
   direction  StockDirection
   quantity   Decimal        @db.Decimal(14, 3)
   balance    Decimal        @db.Decimal(14, 3) // stock after this movement
-  refType    String? // "PURCHASE" | "SALE" | "ADJUSTMENT"
+  refType    String? // "PURCHASE" | "SALE" | "ADJUSTMENT" | "PRODUCTION"
   refId      String?
   notes      String?
   createdAt  DateTime       @default(now())
 
   @@index([materialId])
   @@index([date])
+}
+
+// A mixing/production batch: consumes one or more input materials and produces a
+// quantity of a single output material (e.g. GSP mixed from 40mm Metal + Dust/Clay).
+// The output's costPerUnit is a weighted average blending this batch's input cost
+// with whatever value of the output material was already in stock.
+model Production {
+  id          String    @id @default(cuid())
+  date        DateTime  @default(now())
+  materialId  String
+  material    Material  @relation("ProductionOutput", fields: [materialId], references: [id])
+  quantity    Decimal   @db.Decimal(14, 3) // quantity of output produced
+  costPerUnit Decimal   @db.Decimal(12, 2) // rate applied to the output material after this batch
+  status      TxnStatus @default(CONFIRMED)
+  notes       String?
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+
+  inputs ProductionInput[]
+
+  @@index([materialId])
+  @@index([date])
+}
+
+model ProductionInput {
+  id           String     @id @default(cuid())
+  productionId String
+  production   Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  materialId   String
+  material     Material   @relation("ProductionInput", fields: [materialId], references: [id])
+  quantity     Decimal    @db.Decimal(14, 3) // quantity consumed
+  rate         Decimal    @db.Decimal(12, 2) // that input's rate at the time, for cost calc/audit
 }
 
 // One locked snapshot per material per business day.

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate } from '../lib/hooks';
+import { downloadCsv } from '../lib/csv';
+import ExportCsvButton from '../components/ExportCsvButton';
 import { useAuth } from '../auth/AuthContext';
 import VehicleNumberInput from '../components/VehicleNumberInput';
 import type { Vendor, VendorVehicle } from '../types';
@@ -224,12 +226,30 @@ export default function Vendors() {
         <div className="panel">
           <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
             <strong>{ledgerFor.name} — Ledger</strong>
-            <span>
-              We owe:{' '}
-              <strong style={{ color: (ledger?.balance ?? 0) > 0 ? 'var(--red)' : 'var(--green)' }}>
-                {money(ledger?.balance)}
-              </strong>
-            </span>
+            <div className="flex" style={{ gap: 12, alignItems: 'center' }}>
+              <span>
+                We owe:{' '}
+                <strong style={{ color: (ledger?.balance ?? 0) > 0 ? 'var(--red)' : 'var(--green)' }}>
+                  {money(ledger?.balance)}
+                </strong>
+              </span>
+              <ExportCsvButton
+                disabled={!ledger?.entries.length}
+                onExport={(exportFrom, exportTo) =>
+                  downloadCsv(
+                    `${ledgerFor.name}-ledger-${exportFrom}-${exportTo}`,
+                    [
+                      { header: 'Date', value: (e: LedgerEntry) => fmtDate(e.date) },
+                      { header: 'Description', value: (e: LedgerEntry) => e.description },
+                      { header: 'Debit', value: (e: LedgerEntry) => e.debit },
+                      { header: 'Credit', value: (e: LedgerEntry) => e.credit },
+                      { header: 'Balance', value: (e: LedgerEntry) => e.balance },
+                    ],
+                    (ledger?.entries ?? []).filter((e) => e.date.slice(0, 10) >= exportFrom && e.date.slice(0, 10) <= exportTo),
+                  )
+                }
+              />
+            </div>
           </div>
           <div className="body" style={{ padding: 0 }}>
             <table>

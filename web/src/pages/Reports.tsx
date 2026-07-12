@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useFetch, money, qty } from '../lib/hooks';
+import { downloadCsv } from '../lib/csv';
 import PeriodFilter, { defaultPeriodState, periodRange, type PeriodState } from '../components/PeriodFilter';
 import type { DailyReport } from '../types';
 
@@ -250,7 +251,29 @@ export default function Reports() {
 
       <div className="grid-2">
         <div className="panel">
-          <h2>Material Breakdown</h2>
+          <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+            <h2 style={{ margin: 0, padding: 0, border: 0 }}>Material Breakdown</h2>
+            <button
+              className="btn sm ghost"
+              disabled={!materials?.length}
+              onClick={() =>
+                downloadCsv(
+                  `material-breakdown-${from}-${to}`,
+                  [
+                    { header: 'Material', value: (m: MaterialRow) => m.name },
+                    { header: 'Unit', value: (m: MaterialRow) => m.unit },
+                    { header: 'Sold Qty', value: (m: MaterialRow) => m.soldQty },
+                    { header: 'Sold ₹', value: (m: MaterialRow) => m.soldAmt },
+                    { header: 'Bought Qty', value: (m: MaterialRow) => m.boughtQty },
+                    { header: 'Bought ₹', value: (m: MaterialRow) => m.boughtAmt },
+                  ],
+                  materials ?? [],
+                )
+              }
+            >
+              Export CSV
+            </button>
+          </div>
           <div className="body" style={{ padding: 0 }}>
             <table>
               <thead>
@@ -285,7 +308,26 @@ export default function Reports() {
         <div className="panel">
           <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
             <h2 style={{ margin: 0, padding: 0, border: 0 }}>Expenses by Category</h2>
-            <span>Total: <strong>{money(expensesTotal)}</strong></span>
+            <div className="flex" style={{ gap: 12, alignItems: 'center' }}>
+              <span>Total: <strong>{money(expensesTotal)}</strong></span>
+              <button
+                className="btn sm ghost"
+                disabled={!expenses?.length}
+                onClick={() =>
+                  downloadCsv(
+                    `expenses-by-category-${from}-${to}`,
+                    [
+                      { header: 'Category', value: (e: ExpenseRow) => e.category },
+                      { header: 'Count', value: (e: ExpenseRow) => e.count },
+                      { header: 'Total', value: (e: ExpenseRow) => e.total },
+                    ],
+                    expenses ?? [],
+                  )
+                }
+              >
+                Export CSV
+              </button>
+            </div>
           </div>
           <div className="body" style={{ padding: 0 }}>
             <table>

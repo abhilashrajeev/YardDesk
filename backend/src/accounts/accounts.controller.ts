@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import { PartyType, Permission, Role } from '@prisma/client';
 import { LedgerService } from './ledger.service';
 import { PaymentsService } from './payments.service';
-import { CreatePaymentDto, UpdatePaymentDto } from './payments.dto';
+import { CreatePaymentDto, UpdatePaymentDto, AllocatePaymentDto } from './payments.dto';
 import { Roles, CurrentUser, AuthUser, RequirePermission } from '../auth/decorators';
 
 @Controller('accounts')
@@ -25,8 +25,9 @@ export class AccountsController {
     @Query('vendorId') vendorId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('unallocated') unallocated?: string,
   ) {
-    return this.payments.list({ customerId, vendorId, from, to });
+    return this.payments.list({ customerId, vendorId, from, to, unallocated: unallocated === 'true' });
   }
 
   @Get('payments/:id')
@@ -37,6 +38,12 @@ export class AccountsController {
   @Patch('payments/:id')
   updatePayment(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdatePaymentDto) {
     return this.payments.update(id, dto, user.userId);
+  }
+
+  @RequirePermission(Permission.PAYMENTS)
+  @Patch('payments/:id/allocate')
+  allocatePayment(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: AllocatePaymentDto) {
+    return this.payments.allocate(id, dto, user.userId);
   }
 
   @Delete('payments/:id')

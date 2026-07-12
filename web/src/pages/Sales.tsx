@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate, statusPillClass } from '../lib/hooks';
+import { downloadCsv } from '../lib/csv';
 import { useAuth } from '../auth/AuthContext';
 import LineItems from '../components/LineItems';
 import SaleDetail from '../components/SaleDetail';
+import ExportCsvButton from '../components/ExportCsvButton';
 import CustomerPicker from '../components/CustomerPicker';
 import VehiclePicker, { type UsualVehicle } from '../components/VehiclePicker';
 import PeriodFilter, { defaultPeriodState, periodRange, periodLabel } from '../components/PeriodFilter';
@@ -13,6 +15,7 @@ import type { Customer, Material, Sale, LineInput, PaymentMode, Vehicle, Custome
 export default function Sales() {
   const { user } = useAuth();
   const canCreate = user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes('SALES');
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const [period, setPeriod] = useState(defaultPeriodState());
   const { from, to } = periodRange(period);
   const salesUrl = from ? `/sales?from=${from}&to=${to}` : '/sales';
@@ -23,6 +26,17 @@ export default function Sales() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [open, setOpen] = useState(searchParams.get('new') === '1');
   const [viewId, setViewId] = useState<string | null>(null);
+  const [viewEdit, setViewEdit] = useState(false);
+
+  async function quickDelete(s: Sale) {
+    if (!confirm('Delete this sale? Stock and ledger effects will be reversed.')) return;
+    try {
+      await api.delete(`/sales/${s.id}`);
+      refetch();
+    } catch (e) {
+      alert(apiError(e));
+    }
+  }
 
   // Quick Actions on the dashboard link here with ?new=1 to open the form directly;
   // strip it once applied so it doesn't reopen if the user navigates back later.
@@ -38,15 +52,37 @@ export default function Sales() {
   const active = sales?.filter((s) => s.status !== 'CANCELLED') ?? [];
   const periodTotal = active.reduce((sum, s) => sum + Number(s.total), 0);
 
+  async function exportCsv(exportFrom: string, exportTo: string) {
+    const { data } = await api.get<Sale[]>(`/sales?from=${exportFrom}&to=${exportTo}`);
+    downloadCsv(
+      `sales-${exportFrom}-${exportTo}`,
+      [
+        { header: 'Bill #', value: (s: Sale) => s.billNo ?? '' },
+        { header: 'Date', value: (s: Sale) => fmtDate(s.date) },
+        { header: 'Customer', value: (s: Sale) => s.customer?.name ?? '' },
+        { header: 'Vehicle', value: (s: Sale) => s.vehicle?.number ?? '' },
+        { header: 'Mode', value: (s: Sale) => s.paymentMode },
+        { header: 'Total', value: (s: Sale) => s.total },
+        { header: 'Paid', value: (s: Sale) => s.paidAmount ?? '' },
+        { header: 'Balance', value: (s: Sale) => s.balance ?? '' },
+        { header: 'Status', value: (s: Sale) => (s.status === 'CANCELLED' ? 'CANCELLED' : s.paymentStatus ?? '') },
+      ],
+      data,
+    );
+  }
+
   return (
     <>
       <div className="between" style={{ marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>Sales &amp; Billing</h2>
-        {canCreate && (
-          <button className="btn" onClick={() => setOpen((o) => !o)}>
-            {open ? 'Close' : '+ New Sale'}
-          </button>
-        )}
+        <div className="flex" style={{ gap: 8 }}>
+          <ExportCsvButton onExport={exportCsv} defaultFrom={from || undefined} defaultTo={to || undefined} />
+          {canCreate && (
+            <button className="btn" onClick={() => setOpen((o) => !o)}>
+              {open ? 'Close' : '+ New Sale'}
+            </button>
+          )}
+        </div>
       </div>
 
       {open && canCreate && customers && materials && (
@@ -107,7 +143,15 @@ export default function Sales() {
                     )}
                   </td>
                   <td className="right">
-                    <button className="btn ghost sm" onClick={() => setViewId(s.id)}>View</button>
+                    <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                      <button className="btn ghost sm" onClick={() => { setViewId(s.id); setViewEdit(false); }}>View</button>
+                      {isAdmin && s.status !== 'CANCELLED' && (
+                        <>
+                          <button className="btn ghost sm" onClick={() => { setViewId(s.id); setViewEdit(true); }}>Edit</button>
+                          <button className="btn ghost sm" onClick={() => quickDelete(s)}>Delete</button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -121,7 +165,14 @@ export default function Sales() {
         </div>
       </div>
 
-      {viewId && <SaleDetail id={viewId} onClose={() => setViewId(null)} onChange={refetch} />}
+      {viewId && (
+        <SaleDetail
+          id={viewId}
+          startInEdit={viewEdit}
+          onClose={() => { setViewId(null); setViewEdit(false); }}
+          onChange={refetch}
+        />
+      )}
     </>
   );
 }
@@ -140,14 +191,15 @@ function NewSale({
   onDone: () => void;
 }) {
   const [customerId, setCustomerId] = useState(customers[0]?.id ?? '');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [customerVehicles, setCustomerVehicles] = useState<CustomerVehicle[]>([]);
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH');
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>('CREDIT');
   const [freight, setFreight] = useState(0);
   const [discount, setDiscount] = useState(0);
   const [paidAmount, setPaidAmount] = useState(0);
   const [lines, setLines] = useState<LineInput[]>([
-    { materialId: materials[0]?.id ?? '', quantity: 0, rate: 0 },
+    { materialId: materials[0]?.id ?? '', quantity: 0, rate: Number(materials[0]?.defaultRate ?? 0) },
   ]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -210,6 +262,7 @@ function NewSale({
       await api.post('/sales', {
         customerId,
         vehicleId,
+        date,
         paymentMode,
         freight: Number(freight),
         discount: Number(discount),
@@ -257,6 +310,10 @@ function NewSale({
               <option value="BANK">Bank</option>
               <option value="CREDIT">Credit</option>
             </select>
+          </div>
+          <div>
+            <label>Date</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
           </div>
         </div>
 

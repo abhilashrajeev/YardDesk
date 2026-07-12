@@ -58,3 +58,12 @@ export class UpdatePaymentDto {
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsDateString() date?: string;
 }
+
+// Links (or unlinks, when txnId is null) a payment to a specific purchase/sale invoice.
+// Which one it targets is inferred from the payment's own partyType.
+export class AllocatePaymentDto {
+  @ValidateIf((o) => o.txnId !== null)
+  @IsString()
+  @IsNotEmpty()
+  txnId!: string | null;
+}

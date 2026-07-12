@@ -33,6 +33,9 @@ export function useFetch<T>(url: string | null) {
   return { data, loading, error, refetch, setData };
 }
 
+/** Rounds to 2 decimals — avoids float artifacts like 100 * 2.2 = 220.00000000000003. Matches backend's round2. */
+export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
 export const money = (n: number | string | null | undefined) =>
   '₹' + Number(n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 

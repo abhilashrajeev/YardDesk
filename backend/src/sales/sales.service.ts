@@ -11,6 +11,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../inventory/stock.service';
 import { LedgerService } from '../accounts/ledger.service';
+import { PaymentsService } from '../accounts/payments.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateSaleDto, UpdateSaleDto, CreatePassDto } from './dto';
 import { round2 } from '../common/money';
@@ -34,12 +35,12 @@ function withSaleStatus<
     total: unknown;
     paymentMode: PaymentMode;
     date: Date;
-    payments: { amount: unknown; direction: PaymentDirection }[];
+    payments: { amount: unknown; direction: PaymentDirection; voided?: boolean }[];
   },
 >(sale: T): T & { paidAmount: number; balance: number; paymentStatus: SaleStatus } {
   const total = Number(sale.total);
   const paid = sale.payments
-    .filter((p) => p.direction === PaymentDirection.IN)
+    .filter((p) => p.direction === PaymentDirection.IN && !p.voided)
     .reduce((s, p) => s + Number(p.amount), 0);
   const balance = round2(total - paid);
 
@@ -58,6 +59,7 @@ export class SalesService {
     private prisma: PrismaService,
     private stock: StockService,
     private ledger: LedgerService,
+    private payments: PaymentsService,
     private audit: AuditService,
   ) {}
 
@@ -176,11 +178,19 @@ export class SalesService {
     }, TXN_OPTIONS);
   }
 
-  /** Zero-padded sequential bill number. */
-  private async nextBillNo(tx: {
-    sale: { count: () => Promise<number> };
-  }): Promise<string> {
-    const n = await tx.sale.count();
+  /**
+   * Zero-padded sequential bill number. Derived from the highest existing
+   * billNo (not a row count) so it stays collision-free even after a bill has
+   * been permanently deleted — a row count would shrink and reissue a number
+   * that's still in use by another bill.
+   */
+  private async nextBillNo(tx: Prisma.TransactionClient): Promise<string> {
+    const last = await tx.sale.findFirst({
+      where: { billNo: { not: null } },
+      orderBy: { billNo: 'desc' },
+      select: { billNo: true },
+    });
+    const n = last?.billNo ? parseInt(last.billNo, 10) : 0;
     return String(n + 1).padStart(6, '0');
   }
 
@@ -239,7 +249,7 @@ export class SalesService {
         customer: { select: { name: true } },
         vehicle: { select: { number: true } },
         items: true,
-        payments: { select: { amount: true, direction: true } },
+        payments: { select: { amount: true, direction: true, voided: true } },
       },
     });
     return sales.map(withSaleStatus);
@@ -252,7 +262,7 @@ export class SalesService {
       orderBy: { date: 'desc' },
       include: {
         customer: { select: { name: true } },
-        payments: { select: { amount: true, direction: true } },
+        payments: { select: { amount: true, direction: true, voided: true } },
       },
     });
     return sales.map(withSaleStatus).filter((s) => s.paymentStatus !== 'PAID');
@@ -401,7 +411,13 @@ export class SalesService {
     }, TXN_OPTIONS);
   }
 
-  /** Delete a sale: reverses its stock/ledger effect and marks it cancelled (kept for the audit trail). */
+  /**
+   * Delete a sale: reverses its stock/ledger effect and marks it cancelled
+   * (kept for the audit trail). Any payment still linked to it is auto-voided
+   * too — in real life, cancelling a bill that was already paid means giving
+   * that money back, so the customer's balance should net back to ₹0, not go
+   * negative (which would otherwise misread as "we owe them an advance").
+   */
   async remove(id: string, userId: string) {
     const existing = await this.prisma.sale.findUnique({ where: { id }, include: { items: true } });
     if (!existing) throw new NotFoundException('Sale not found');
@@ -409,6 +425,12 @@ export class SalesService {
 
     return this.prisma.$transaction(async (tx) => {
       await this.reverseEffects(tx, existing, existing.items, existing.date);
+
+      const linkedPayments = await tx.payment.findMany({ where: { saleId: id, voided: false } });
+      for (const payment of linkedPayments) {
+        await this.payments.voidWithinTx(tx, payment, userId, `bill ${existing.billNo ?? existing.id} was deleted`);
+      }
+
       const sale = await tx.sale.update({ where: { id }, data: { status: TxnStatus.CANCELLED } });
       await this.audit.log(
         {
@@ -422,6 +444,93 @@ export class SalesService {
         tx,
       );
       return sale;
+    }, TXN_OPTIONS);
+  }
+
+  /**
+   * Undo a cancellation: reapplies the original stock/ledger effects, sets it
+   * back to CONFIRMED, and un-voids any payment that was auto-voided when it
+   * was cancelled — restore is a full undo of delete, symmetric in both directions.
+   */
+  async restore(id: string, userId: string) {
+    const existing = await this.prisma.sale.findUnique({ where: { id }, include: { items: true } });
+    if (!existing) throw new NotFoundException('Sale not found');
+    if (existing.status !== TxnStatus.CANCELLED) {
+      throw new BadRequestException('Only a cancelled sale can be restored.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const it of existing.items) {
+        await this.stock.apply(tx, {
+          materialId: it.materialId,
+          direction: StockDirection.OUT,
+          quantity: Number(it.quantity),
+          refType: 'SALE_RESTORE',
+          refId: existing.id,
+          date: new Date(),
+        });
+      }
+      await this.ledger.post(tx, {
+        partyType: PartyType.CUSTOMER,
+        customerId: existing.customerId,
+        description: `Restoration of bill ${existing.billNo ?? existing.id}`,
+        debit: Number(existing.total),
+        refType: 'SALE_RESTORE',
+        refId: existing.id,
+        date: new Date(),
+      });
+
+      const voidedPayments = await tx.payment.findMany({ where: { saleId: id, voided: true } });
+      for (const payment of voidedPayments) {
+        await this.payments.unvoidWithinTx(tx, payment, userId, `bill ${existing.billNo ?? existing.id} was restored`);
+      }
+
+      const sale = await tx.sale.update({ where: { id }, data: { status: TxnStatus.CONFIRMED } });
+      await this.audit.log(
+        {
+          entityType: 'SALE',
+          entityId: id,
+          action: AuditAction.UPDATE,
+          summary: `Bill ${existing.billNo} restored — ₹${Number(existing.total)}`,
+          before: existing,
+          after: sale,
+          userId,
+        },
+        tx,
+      );
+      return sale;
+    }, TXN_OPTIONS);
+  }
+
+  /**
+   * Permanently erases a cancelled sale — only reachable once it's already
+   * cancelled (money/stock already reversed). Any payment still linked to it
+   * is unlinked (kept — it's a separate real fact) rather than deleted.
+   * Ledger/audit history rows referencing this sale's id are left as-is; they
+   * don't have a hard foreign key to it and remain valid historical records.
+   */
+  async hardDelete(id: string, userId: string) {
+    const existing = await this.prisma.sale.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Sale not found');
+    if (existing.status !== TxnStatus.CANCELLED) {
+      throw new BadRequestException('Only a cancelled sale can be permanently deleted — delete it first.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.payment.updateMany({ where: { saleId: id }, data: { saleId: null } });
+      await tx.sale.delete({ where: { id } });
+      await this.audit.log(
+        {
+          entityType: 'SALE',
+          entityId: id,
+          action: AuditAction.DELETE,
+          summary: `Bill ${existing.billNo} permanently deleted — was ₹${Number(existing.total)}`,
+          before: existing,
+          userId,
+        },
+        tx,
+      );
+      return { success: true };
     }, TXN_OPTIONS);
   }
 }

@@ -252,6 +252,8 @@ input:focus, select:focus { outline: none; border-color: var(--gold); box-shadow
 
 /* ---------- Quick actions (dashboard) ---------- */
 .qa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.qa-bar { display: flex; flex-wrap: wrap; gap: 10px; }
+.qa-bar .qa-btn { flex: 1 1 190px; }
 .qa-btn {
   display: flex; align-items: center; gap: 10px; padding: 11px 13px;
   border: 1px solid var(--border-strong); border-radius: var(--r-sm);

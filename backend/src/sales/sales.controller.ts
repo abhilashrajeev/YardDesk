@@ -44,6 +44,16 @@ export class SalesController {
     return this.sales.remove(id, user.userId);
   }
 
+  @Post(':id/restore')
+  restore(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.sales.restore(id, user.userId);
+  }
+
+  @Delete(':id/permanent')
+  hardDelete(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.sales.hardDelete(id, user.userId);
+  }
+
   @Post(':id/gate-pass')
   gatePass(
     @Param('id') id: string,

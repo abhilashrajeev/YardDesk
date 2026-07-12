@@ -1,6 +1,6 @@
 import type { Material, LineInput } from '../types';
 import { TON_TO_CFT } from '../types';
-import { money } from '../lib/hooks';
+import { money, round2 } from '../lib/hooks';
 
 interface Props {
   materials: Material[];
@@ -42,7 +42,7 @@ export default function PurchaseLineItems({ materials, lines, onChange }: Props)
     const amount = Number(amountStr);
     const qty = lines[i].quantity;
     if (!qty || Number.isNaN(amount)) return;
-    update(i, { rate: amount / qty });
+    update(i, { rate: round2(amount / qty) });
   }
   function add() {
     const mat = materials[0];
@@ -116,7 +116,7 @@ export default function PurchaseLineItems({ materials, lines, onChange }: Props)
                   <input
                     type="number"
                     step="0.01"
-                    value={(l.quantity * l.rate) || ''}
+                    value={round2(l.quantity * l.rate) || ''}
                     title={l.quantity ? 'Type an amount to back-solve the rate' : 'Enter a quantity first'}
                     onChange={(e) => setAmount(i, e.target.value)}
                     style={{ textAlign: 'right' }}
@@ -134,7 +134,7 @@ export default function PurchaseLineItems({ materials, lines, onChange }: Props)
       </table>
       <div className="between" style={{ marginTop: 10 }}>
         <button type="button" className="btn ghost sm" onClick={add}>
-          + Add line
+          + Add Purchase
         </button>
         <div>
           Subtotal: <strong>{money(subTotal)}</strong>
