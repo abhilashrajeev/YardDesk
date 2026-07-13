@@ -230,6 +230,10 @@ input:focus, select:focus { outline: none; border-color: var(--gold); box-shadow
    native date-input widget in particular can want more room than the cell has,
    otherwise pushing/overlapping past its column instead of just fitting it. */
 input, select { min-width: 0; }
+/* iOS Safari keeps its own native chrome (border/background) on date/time inputs
+   layered underneath custom CSS unless appearance is explicitly turned off —
+   otherwise it shows through as a faint double border / mismatched edge. */
+input[type='date'] { -webkit-appearance: none; appearance: none; text-align: left; }
 .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 14px; }
 .row > div { min-width: 0; }
 
