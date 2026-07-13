@@ -146,6 +146,12 @@ export default function Mixing() {
         )}
       </div>
 
+      {open && canCreate && !materials && (
+        <div className="panel">
+          <div className="body muted" style={{ textAlign: 'center', padding: '32px 0' }}>Loading…</div>
+        </div>
+      )}
+
       {open && canCreate && materials && (
         <form className="panel" onSubmit={submit}>
           <h2>{editingId ? 'Edit Mix Batch' : 'New Mix Batch'}</h2>

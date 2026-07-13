@@ -85,6 +85,12 @@ export default function Sales() {
         </div>
       </div>
 
+      {open && canCreate && (!customers || !materials) && (
+        <div className="panel">
+          <div className="body muted" style={{ textAlign: 'center', padding: '32px 0' }}>Loading…</div>
+        </div>
+      )}
+
       {open && canCreate && customers && materials && (
         <NewSale
           customers={customers}
