@@ -3,7 +3,9 @@ import { api, apiError } from '../api/client';
 import { useFetch } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
 import VehicleNumberInput from '../components/VehicleNumberInput';
-import type { Vehicle } from '../types';
+import CustomerPicker from '../components/CustomerPicker';
+import VendorPicker from '../components/VendorPicker';
+import type { Vehicle, Customer, Vendor } from '../types';
 
 /** Capacity registered against this truck by a customer/vendor takes priority over the
  *  manually-entered value, since that's the number actually used day-to-day. */
@@ -19,8 +21,14 @@ function displayExtraBody(v: Vehicle): string {
   return v.customerVehicles?.[0]?.extraBodyCft ?? v.extraBodyCft ?? '—';
 }
 
+function isLinked(v: Vehicle): boolean {
+  return !!(v.customerVehicles?.length || v.vendorVehicles?.length);
+}
+
 export default function Vehicles() {
   const { data: vehicles, refetch } = useFetch<Vehicle[]>('/vehicles');
+  const { data: customers, setData: setCustomers } = useFetch<Customer[]>('/customers');
+  const { data: vendors, setData: setVendors } = useFetch<Vendor[]>('/vendors');
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
 
@@ -29,6 +37,8 @@ export default function Vehicles() {
   const [ownerPhone, setOwnerPhone] = useState('');
   const [capacity, setCapacity] = useState(0);
   const [extraBodyCft, setExtraBodyCft] = useState(0);
+  const [linkType, setLinkType] = useState<'' | 'CUSTOMER' | 'VENDOR'>('');
+  const [linkPartyId, setLinkPartyId] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<Vehicle | null>(null);
@@ -37,6 +47,9 @@ export default function Vehicles() {
   // like it's ignoring what's on screen.
   const [editCapacity, setEditCapacity] = useState('');
   const [editExtraBody, setEditExtraBody] = useState('');
+
+  const [skipped, setSkipped] = useState<Set<string>>(new Set());
+  const needsLinking = (vehicles ?? []).filter((v) => v.ownerName && !isLinked(v) && !skipped.has(v.id));
 
   function startEdit(v: Vehicle) {
     setEditing(v);
@@ -50,6 +63,7 @@ export default function Vehicles() {
     e.preventDefault();
     setError('');
     if (!number.trim()) return setError('Vehicle number is required.');
+    if (linkType && !linkPartyId) return setError(`Pick or add a ${linkType === 'CUSTOMER' ? 'customer' : 'vendor'} to link this vehicle to.`);
     setSaving(true);
     try {
       await api.post('/vehicles', {
@@ -59,11 +73,25 @@ export default function Vehicles() {
         capacity: capacity > 0 ? Number(capacity) : undefined,
         extraBodyCft: extraBodyCft > 0 ? Number(extraBodyCft) : undefined,
       });
+      if (linkType === 'CUSTOMER' && linkPartyId) {
+        await api.post(`/customers/${linkPartyId}/vehicles`, {
+          vehicleNumber: number.trim(),
+          quantityCft: capacity > 0 ? Number(capacity) : 0,
+          extraBodyCft: extraBodyCft > 0 ? Number(extraBodyCft) : undefined,
+        });
+      } else if (linkType === 'VENDOR' && linkPartyId) {
+        await api.post(`/vendors/${linkPartyId}/vehicles`, {
+          vehicleNumber: number.trim(),
+          defaultQuantity: capacity > 0 ? Number(capacity) : 0,
+        });
+      }
       setNumber('');
       setOwnerName('');
       setOwnerPhone('');
       setCapacity(0);
       setExtraBodyCft(0);
+      setLinkType('');
+      setLinkPartyId('');
       refetch();
     } catch (err) {
       setError(apiError(err));
@@ -153,10 +181,85 @@ export default function Vehicles() {
               <input type="number" value={extraBodyCft || ''} onChange={(e) => setExtraBodyCft(Number(e.target.value))} />
             </div>
           </div>
+
+          <div className="row">
+            <div>
+              <label>Link to (optional)</label>
+              <select
+                value={linkType}
+                onChange={(e) => {
+                  setLinkType(e.target.value as '' | 'CUSTOMER' | 'VENDOR');
+                  setLinkPartyId('');
+                }}
+              >
+                <option value="">Not linked</option>
+                <option value="CUSTOMER">A customer</option>
+                <option value="VENDOR">A vendor</option>
+              </select>
+            </div>
+            {linkType === 'CUSTOMER' && customers && (
+              <div>
+                <label>Customer</label>
+                <CustomerPicker
+                  customers={customers}
+                  value={linkPartyId}
+                  onChange={setLinkPartyId}
+                  onCreated={(c) => setCustomers([...(customers ?? []), c])}
+                />
+              </div>
+            )}
+            {linkType === 'VENDOR' && vendors && (
+              <div>
+                <label>Vendor</label>
+                <VendorPicker
+                  vendors={vendors}
+                  value={linkPartyId}
+                  onChange={setLinkPartyId}
+                  onCreated={(v) => setVendors([...(vendors ?? []), v])}
+                />
+              </div>
+            )}
+          </div>
+
           {error && <div className="err">{error}</div>}
           <button className="btn" disabled={saving}>{saving ? 'Saving…' : 'Add Vehicle'}</button>
         </div>
       </form>
+
+      {needsLinking.length > 0 && (
+        <div className="panel">
+          <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+            <h2 style={{ margin: 0, padding: 0, border: 0 }}>Needs Linking</h2>
+            <span className="muted" style={{ fontSize: 13 }}>{needsLinking.length} vehicle{needsLinking.length === 1 ? '' : 's'} have an owner name but aren't linked to a real customer/vendor yet</span>
+          </div>
+          <div className="body">
+            <table>
+              <thead>
+                <tr>
+                  <th>Vehicle</th>
+                  <th>Owner</th>
+                  <th className="num">Capacity</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {needsLinking.map((v) => (
+                  <VehicleLinkRow
+                    key={v.id}
+                    vehicle={v}
+                    customers={customers ?? []}
+                    vendors={vendors ?? []}
+                    onCustomerCreated={(c) => setCustomers([...(customers ?? []), c])}
+                    onVendorCreated={(vd) => setVendors([...(vendors ?? []), vd])}
+                    onLinked={refetch}
+                    onSkip={() => setSkipped((prev) => new Set(prev).add(v.id))}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="panel">
         <h2>All Vehicles</h2>
@@ -233,6 +336,132 @@ export default function Vehicles() {
             </div>
           </div>
         </div>
+      )}
+    </>
+  );
+}
+
+function VehicleLinkRow({
+  vehicle,
+  customers,
+  vendors,
+  onCustomerCreated,
+  onVendorCreated,
+  onLinked,
+  onSkip,
+}: {
+  vehicle: Vehicle;
+  customers: Customer[];
+  vendors: Vendor[];
+  onCustomerCreated: (c: Customer) => void;
+  onVendorCreated: (v: Vendor) => void;
+  onLinked: () => void;
+  onSkip: () => void;
+}) {
+  const [mode, setMode] = useState<'idle' | 'CUSTOMER' | 'VENDOR'>('idle');
+  const [partyId, setPartyId] = useState('');
+  const [qty, setQty] = useState(Number(vehicle.capacity ?? 0));
+  const [extraBody, setExtraBody] = useState(Number(vehicle.extraBodyCft ?? 0));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function confirmLink() {
+    if (!partyId) return setError('Pick or add a party first.');
+    if (!qty || qty <= 0) return setError('Enter the usual quantity (cft).');
+    setSaving(true);
+    setError('');
+    try {
+      if (mode === 'CUSTOMER') {
+        await api.post(`/customers/${partyId}/vehicles`, {
+          vehicleNumber: vehicle.number,
+          quantityCft: qty,
+          extraBodyCft: extraBody > 0 ? extraBody : undefined,
+        });
+      } else if (mode === 'VENDOR') {
+        await api.post(`/vendors/${partyId}/vehicles`, {
+          vehicleNumber: vehicle.number,
+          defaultQuantity: qty,
+        });
+      }
+      onLinked();
+    } catch (e) {
+      setError(apiError(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <tr>
+        <td style={{ fontWeight: 600, verticalAlign: 'top' }}>{vehicle.number}</td>
+        <td className="muted" style={{ verticalAlign: 'top' }}>
+          {vehicle.ownerName ?? '—'}
+          {vehicle.ownerPhone && <div style={{ fontSize: 12 }}>{vehicle.ownerPhone}</div>}
+        </td>
+        <td className="num" style={{ verticalAlign: 'top' }}>{vehicle.capacity ?? '—'}</td>
+        <td className="right">
+          {mode === 'idle' ? (
+            <div className="flex" style={{ gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button type="button" className="btn ghost sm" onClick={() => setMode('CUSTOMER')}>As Customer</button>
+              <button type="button" className="btn ghost sm" onClick={() => setMode('VENDOR')}>As Vendor</button>
+              <button type="button" className="btn ghost sm" onClick={onSkip}>Skip</button>
+            </div>
+          ) : (
+            <button type="button" className="btn ghost sm" onClick={() => setMode('idle')}>Cancel</button>
+          )}
+        </td>
+      </tr>
+      {mode !== 'idle' && (
+        <tr>
+          <td colSpan={4} style={{ background: 'var(--bg-soft, rgba(0,0,0,0.02))' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <div style={{ flex: '1 1 220px', minWidth: 180 }}>
+                {mode === 'CUSTOMER' ? (
+                  <CustomerPicker
+                    customers={customers}
+                    value={partyId}
+                    onChange={setPartyId}
+                    onCreated={(c) => {
+                      onCustomerCreated(c);
+                      setPartyId(c.id);
+                    }}
+                  />
+                ) : (
+                  <VendorPicker
+                    vendors={vendors}
+                    value={partyId}
+                    onChange={setPartyId}
+                    onCreated={(v) => {
+                      onVendorCreated(v);
+                      setPartyId(v.id);
+                    }}
+                  />
+                )}
+              </div>
+              <input
+                type="number"
+                placeholder="Usual qty (cft)"
+                value={qty || ''}
+                onChange={(e) => setQty(Number(e.target.value))}
+                style={{ width: 120 }}
+              />
+              {mode === 'CUSTOMER' && (
+                <input
+                  type="number"
+                  placeholder="Extra body"
+                  value={extraBody || ''}
+                  onChange={(e) => setExtraBody(Number(e.target.value))}
+                  style={{ width: 110 }}
+                />
+              )}
+              <button type="button" className="btn sm" disabled={saving} onClick={confirmLink}>
+                {saving ? '…' : 'Link'}
+              </button>
+            </div>
+            {error && <div className="err" style={{ fontSize: 12, marginTop: 4 }}>{error}</div>}
+          </td>
+        </tr>
       )}
     </>
   );
