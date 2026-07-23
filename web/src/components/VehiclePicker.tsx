@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatVehicleNumber } from '../lib/vehicleFormat';
+import { Icon } from './Icon';
 import type { Vehicle } from '../types';
 
 export interface UsualVehicle {
@@ -79,6 +80,7 @@ export default function VehiclePicker({
       <input
         value={open ? query : value}
         placeholder="e.g. KL-01-AA-0123"
+        style={{ paddingRight: 32 }}
         onFocus={() => {
           setOpen(true);
           setQuery('');
@@ -89,6 +91,11 @@ export default function VehiclePicker({
           onChange(formatted);
         }}
       />
+      {/* Nothing else hints this field opens a list of registered vehicles on tap —
+          this chevron gives it the same "there are options here" cue a <select> has. */}
+      <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+        <Icon name="chevron-down" size={16} className="muted" />
+      </span>
       {open && (
         <div
           className="panel"
