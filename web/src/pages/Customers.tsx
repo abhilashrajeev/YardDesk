@@ -24,6 +24,7 @@ export default function Customers() {
   const [phone, setPhone] = useState('');
   const [creditLimit, setCreditLimit] = useState(0);
   const [openingBalance, setOpeningBalance] = useState(0);
+  const [vehicleNumber, setVehicleNumber] = useState('');
   const [error, setError] = useState('');
   const [ledgerFor, setLedgerFor] = useState<Customer | null>(null);
   const [editing, setEditing] = useState<Customer | null>(null);
@@ -92,11 +93,13 @@ export default function Customers() {
         phone: phone || undefined,
         creditLimit: Number(creditLimit),
         openingBalance: Number(openingBalance) || undefined,
+        vehicleNumber: vehicleNumber.trim() || undefined,
       });
       setName('');
       setPhone('');
       setCreditLimit(0);
       setOpeningBalance(0);
+      setVehicleNumber('');
       refetch();
     } catch (err) {
       setError(apiError(err));
@@ -161,6 +164,10 @@ export default function Customers() {
                 onChange={(e) => setOpeningBalance(Number(e.target.value))}
                 placeholder="Amount they already owe you"
               />
+            </div>
+            <div>
+              <label>Vehicle number (optional)</label>
+              <VehicleNumberInput value={vehicleNumber} onChange={setVehicleNumber} />
             </div>
           </div>
           {error && !editing && <div className="err">{error}</div>}

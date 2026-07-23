@@ -12,7 +12,8 @@ export class VendorsService {
   ) {}
 
   async create(dto: CreateVendorDto, userId: string) {
-    const vendor = await this.prisma.vendor.create({ data: dto });
+    const { vehicleNumber, ...data } = dto;
+    const vendor = await this.prisma.vendor.create({ data });
     await this.audit.log({
       entityType: 'VENDOR',
       entityId: vendor.id,
@@ -21,6 +22,9 @@ export class VendorsService {
       after: vendor,
       userId,
     });
+    if (vehicleNumber?.trim()) {
+      await this.addVehicle(vendor.id, { vehicleNumber }, userId);
+    }
     return vendor;
   }
 
@@ -86,28 +90,33 @@ export class VendorsService {
   }
 
   async addVehicle(vendorId: string, dto: AddVendorVehicleDto, userId: string) {
-    await this.findOne(vendorId);
+    const vendor = await this.findOne(vendorId);
     const number = dto.vehicleNumber.trim();
 
     let vehicle = await this.prisma.vehicle.findFirst({
       where: { number: { equals: number, mode: 'insensitive' } },
     });
     if (!vehicle) {
-      vehicle = await this.prisma.vehicle.create({ data: { number } });
+      vehicle = await this.prisma.vehicle.create({ data: { number, ownerName: vendor.name } });
+    } else if (vehicle.ownerName !== vendor.name) {
+      // Linking to an existing vehicle re-attributes it to this vendor, so the owner
+      // name shown on the Vehicles page always matches the party it's actually linked to.
+      vehicle = await this.prisma.vehicle.update({ where: { id: vehicle.id }, data: { ownerName: vendor.name } });
     }
 
+    const defaultQuantity = dto.defaultQuantity ?? (vehicle.capacity ? Number(vehicle.capacity) : 0);
     // Re-registering the same vehicle for this vendor just updates the quantity.
     const vv = await this.prisma.vendorVehicle.upsert({
       where: { vendorId_vehicleId: { vendorId, vehicleId: vehicle.id } },
-      create: { vendorId, vehicleId: vehicle.id, defaultQuantity: dto.defaultQuantity },
-      update: { defaultQuantity: dto.defaultQuantity },
+      create: { vendorId, vehicleId: vehicle.id, defaultQuantity },
+      update: { defaultQuantity },
       include: { vehicle: { select: { id: true, number: true } } },
     });
     await this.audit.log({
       entityType: 'VENDOR_VEHICLE',
       entityId: vv.id,
       action: AuditAction.CREATE,
-      summary: `Vendor vehicle set: ${vehicle.number} — ${dto.defaultQuantity}`,
+      summary: `Vendor vehicle set: ${vehicle.number} — ${defaultQuantity}`,
       after: vv,
       userId,
     });

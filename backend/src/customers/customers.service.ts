@@ -12,7 +12,8 @@ export class CustomersService {
   ) {}
 
   async create(dto: CreateCustomerDto, userId: string) {
-    const customer = await this.prisma.customer.create({ data: dto });
+    const { vehicleNumber, ...data } = dto;
+    const customer = await this.prisma.customer.create({ data });
     await this.audit.log({
       entityType: 'CUSTOMER',
       entityId: customer.id,
@@ -21,6 +22,9 @@ export class CustomersService {
       after: customer,
       userId,
     });
+    if (vehicleNumber?.trim()) {
+      await this.addVehicle(customer.id, { vehicleNumber }, userId);
+    }
     return customer;
   }
 
@@ -95,18 +99,23 @@ export class CustomersService {
     if (!vehicle) {
       // Brand-new vehicle registered via a customer — stamp the customer as its owner.
       vehicle = await this.prisma.vehicle.create({ data: { number, ownerName: customer.name } });
+    } else if (vehicle.ownerName !== customer.name) {
+      // Linking to an existing vehicle re-attributes it to this customer, so the owner
+      // name shown on the Vehicles page always matches the party it's actually linked to.
+      vehicle = await this.prisma.vehicle.update({ where: { id: vehicle.id }, data: { ownerName: customer.name } });
     }
 
+    const quantityCft = dto.quantityCft ?? (vehicle.capacity ? Number(vehicle.capacity) : 0);
     const cv = await this.prisma.customerVehicle.upsert({
       where: { customerId_vehicleId: { customerId, vehicleId: vehicle.id } },
       create: {
         customerId,
         vehicleId: vehicle.id,
-        quantityCft: dto.quantityCft,
+        quantityCft,
         extraBodyCft: dto.extraBodyCft,
       },
       update: {
-        quantityCft: dto.quantityCft,
+        quantityCft,
         extraBodyCft: dto.extraBodyCft,
       },
       include: { vehicle: { select: { id: true, number: true } } },
@@ -115,7 +124,7 @@ export class CustomersService {
       entityType: 'CUSTOMER_VEHICLE',
       entityId: cv.id,
       action: AuditAction.CREATE,
-      summary: `Customer vehicle set: ${vehicle.number} — ${dto.quantityCft} cft`,
+      summary: `Customer vehicle set: ${vehicle.number} — ${quantityCft} cft`,
       after: cv,
       userId,
     });

@@ -28,6 +28,11 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsNumber()
   openingBalance?: number;
+
+  /** Lets a customer's usual vehicle be registered in the same step as adding the customer. */
+  @IsOptional()
+  @IsString()
+  vehicleNumber?: string;
 }
 
 export class UpdateCustomerDto {
@@ -44,9 +49,10 @@ export class AddCustomerVehicleDto {
   @IsNotEmpty()
   vehicleNumber!: string;
 
-  /** Always in cft. */
+  /** Always in cft. Optional so a vehicle can be linked before its usual capacity is known. */
+  @IsOptional()
   @IsNumber()
-  quantityCft!: number;
+  quantityCft?: number;
 
   /** Some trucks add a second body for extra load — optional, also cft. */
   @IsOptional()

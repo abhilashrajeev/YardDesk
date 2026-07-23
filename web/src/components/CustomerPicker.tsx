@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, apiError } from '../api/client';
+import VehicleNumberInput from './VehicleNumberInput';
 import type { Customer } from '../types';
 
 interface Props {
@@ -17,6 +18,7 @@ export default function CustomerPicker({ customers, value, onChange, onCreated }
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newVehicleNumber, setNewVehicleNumber] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const boxRef = useRef<HTMLDivElement>(null);
@@ -46,6 +48,7 @@ export default function CustomerPicker({ customers, value, onChange, onCreated }
       const res = await api.post<Customer>('/customers', {
         name: newName.trim(),
         phone: newPhone.trim() || undefined,
+        vehicleNumber: newVehicleNumber.trim() || undefined,
       });
       onCreated(res.data);
       onChange(res.data.id);
@@ -53,6 +56,7 @@ export default function CustomerPicker({ customers, value, onChange, onCreated }
       setOpen(false);
       setNewName('');
       setNewPhone('');
+      setNewVehicleNumber('');
       setQuery('');
     } catch (err) {
       setError(apiError(err));
@@ -122,6 +126,8 @@ export default function CustomerPicker({ customers, value, onChange, onCreated }
               <input value={newName} onChange={(e) => setNewName(e.target.value)} autoFocus />
               <label style={{ marginTop: 8 }}>Phone (optional)</label>
               <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} />
+              <label style={{ marginTop: 8 }}>Vehicle number (optional)</label>
+              <VehicleNumberInput value={newVehicleNumber} onChange={setNewVehicleNumber} />
               {error && <div className="err">{error}</div>}
               <div className="between" style={{ marginTop: 10 }}>
                 <button type="button" className="btn ghost sm" onClick={() => setAdding(false)}>

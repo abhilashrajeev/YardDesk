@@ -14,6 +14,9 @@ export class CreateVendorDto {
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() address?: string;
   @IsOptional() @IsNumber() openingBalance?: number;
+
+  /** Lets a vendor's usual vehicle be registered in the same step as adding the vendor. */
+  @IsOptional() @IsString() vehicleNumber?: string;
 }
 
 export class UpdateVendorDto {
@@ -29,8 +32,10 @@ export class AddVendorVehicleDto {
   @IsNotEmpty()
   vehicleNumber!: string;
 
+  /** Optional so a vehicle can be linked before its usual quantity is known. */
+  @IsOptional()
   @IsNumber()
-  defaultQuantity!: number;
+  defaultQuantity?: number;
 }
 
 export class UpdateVendorVehicleDto {
