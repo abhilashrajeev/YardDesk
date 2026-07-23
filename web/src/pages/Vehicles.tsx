@@ -166,7 +166,12 @@ export default function Vehicles() {
             </div>
             <div>
               <label>Owner name</label>
-              <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} />
+              <input
+                value={ownerName}
+                onChange={(e) => setOwnerName(e.target.value)}
+                disabled={!!linkType}
+                placeholder={linkType ? `Same as the linked ${linkType === 'CUSTOMER' ? 'customer' : 'vendor'}` : undefined}
+              />
             </div>
             <div>
               <label>Owner phone</label>
@@ -190,6 +195,7 @@ export default function Vehicles() {
                 onChange={(e) => {
                   setLinkType(e.target.value as '' | 'CUSTOMER' | 'VENDOR');
                   setLinkPartyId('');
+                  setOwnerName('');
                 }}
               >
                 <option value="">Not linked</option>
@@ -203,8 +209,14 @@ export default function Vehicles() {
                 <CustomerPicker
                   customers={customers}
                   value={linkPartyId}
-                  onChange={setLinkPartyId}
-                  onCreated={(c) => setCustomers([...(customers ?? []), c])}
+                  onChange={(id) => {
+                    setLinkPartyId(id);
+                    setOwnerName(customers.find((c) => c.id === id)?.name ?? '');
+                  }}
+                  onCreated={(c) => {
+                    setCustomers([...(customers ?? []), c]);
+                    setOwnerName(c.name);
+                  }}
                 />
               </div>
             )}
@@ -214,8 +226,14 @@ export default function Vehicles() {
                 <VendorPicker
                   vendors={vendors}
                   value={linkPartyId}
-                  onChange={setLinkPartyId}
-                  onCreated={(v) => setVendors([...(vendors ?? []), v])}
+                  onChange={(id) => {
+                    setLinkPartyId(id);
+                    setOwnerName(vendors.find((v) => v.id === id)?.name ?? '');
+                  }}
+                  onCreated={(v) => {
+                    setVendors([...(vendors ?? []), v]);
+                    setOwnerName(v.name);
+                  }}
                 />
               </div>
             )}
