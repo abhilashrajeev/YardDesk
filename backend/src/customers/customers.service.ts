@@ -23,7 +23,16 @@ export class CustomersService {
       userId,
     });
     if (vehicleNumber?.trim()) {
-      await this.addVehicle(customer.id, { vehicleNumber }, userId);
+      // This endpoint has no role restriction, but re-attributing an *existing* vehicle's
+      // owner is an ADMIN-only action (see the @Roles guard on POST /customers/:id/vehicles).
+      // Only auto-link here when the number is genuinely new, so this shortcut can't be used
+      // to silently reassign someone else's already-registered vehicle.
+      const existing = await this.prisma.vehicle.findFirst({
+        where: { number: { equals: vehicleNumber.trim(), mode: 'insensitive' } },
+      });
+      if (!existing) {
+        await this.addVehicle(customer.id, { vehicleNumber }, userId);
+      }
     }
     return customer;
   }

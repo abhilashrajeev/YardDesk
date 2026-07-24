@@ -23,7 +23,16 @@ export class VendorsService {
       userId,
     });
     if (vehicleNumber?.trim()) {
-      await this.addVehicle(vendor.id, { vehicleNumber }, userId);
+      // POST /vendors is ADMIN-gated today, but keep this the same shape as the customer
+      // side for defense-in-depth: only auto-link a genuinely new vehicle number here —
+      // re-attributing an existing vehicle's owner stays behind the dedicated,
+      // explicitly ADMIN-only POST /vendors/:id/vehicles endpoint.
+      const existing = await this.prisma.vehicle.findFirst({
+        where: { number: { equals: vehicleNumber.trim(), mode: 'insensitive' } },
+      });
+      if (!existing) {
+        await this.addVehicle(vendor.id, { vehicleNumber }, userId);
+      }
     }
     return vendor;
   }
