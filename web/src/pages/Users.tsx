@@ -27,7 +27,7 @@ function PermissionPicker({
 }
 
 export default function Users() {
-  const { data: users, refetch } = useFetch<StaffUser[]>('/users');
+  const { data: users, loading: usersLoading, refetch } = useFetch<StaffUser[]>('/users');
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -181,6 +181,11 @@ export default function Users() {
                   </td>
                 </tr>
               ))}
+              {usersLoading && !users && (
+                <tr>
+                  <td colSpan={7} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
               {users?.length === 0 && (
                 <tr>
                   <td colSpan={7} className="muted" style={{ padding: 16 }}>No users yet.</td>

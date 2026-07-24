@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { Material, Unit } from '../types';
 
 export default function Materials() {
-  const { data: materials, refetch } = useFetch<Material[]>('/materials');
+  const { data: materials, loading: materialsLoading, refetch } = useFetch<Material[]>('/materials');
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const [name, setName] = useState('');
@@ -201,6 +201,16 @@ export default function Materials() {
                   </td>
                 </tr>
               ))}
+              {materialsLoading && !materials && (
+                <tr>
+                  <td colSpan={7} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
+              {materials?.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="muted" style={{ padding: 16 }}>No materials yet.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

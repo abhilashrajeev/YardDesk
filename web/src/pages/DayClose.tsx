@@ -18,7 +18,7 @@ function today() {
 
 export default function DayClose() {
   const [date, setDate] = useState(today());
-  const { data: rows, refetch } = useFetch<Row[]>(`/day-close/preview?date=${date}`);
+  const { data: rows, loading: rowsLoading, refetch } = useFetch<Row[]>(`/day-close/preview?date=${date}`);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -77,6 +77,11 @@ export default function DayClose() {
                   <td className="num"><strong>{qty(r.closing)}</strong></td>
                 </tr>
               ))}
+              {rowsLoading && !rows && (
+                <tr>
+                  <td colSpan={6} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -19,7 +19,7 @@ function fmtTime(s: string) {
 export default function AuditLogPage() {
   const [entityType, setEntityType] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
-  const { data: logs } = useFetch<AuditLog[]>(
+  const { data: logs, loading: logsLoading } = useFetch<AuditLog[]>(
     `/audit-logs${entityType ? `?entityType=${entityType}` : ''}`,
   );
 
@@ -94,6 +94,11 @@ export default function AuditLogPage() {
                   )}
                 </Fragment>
               ))}
+              {logsLoading && !logs && (
+                <tr>
+                  <td colSpan={6} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
               {logs?.length === 0 && (
                 <tr>
                   <td colSpan={6} className="muted" style={{ padding: 16 }}>No audit entries yet.</td>

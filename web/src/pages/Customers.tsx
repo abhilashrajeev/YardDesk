@@ -17,7 +17,7 @@ interface LedgerEntry {
 }
 
 export default function Customers() {
-  const { data: customers, refetch } = useFetch<Customer[]>('/customers');
+  const { data: customers, loading: customersLoading, refetch } = useFetch<Customer[]>('/customers');
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const [name, setName] = useState('');
@@ -221,6 +221,11 @@ export default function Customers() {
                   </td>
                 </tr>
               ))}
+              {customersLoading && !customers && (
+                <tr>
+                  <td colSpan={4} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
               {customers?.length === 0 && (
                 <tr>
                   <td colSpan={4} className="muted" style={{ padding: 16 }}>No customers yet.</td>

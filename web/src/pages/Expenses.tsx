@@ -23,7 +23,7 @@ export default function Expenses() {
   const [period, setPeriod] = useState(defaultPeriodState());
   const { from, to } = periodRange(period);
   const expensesUrl = from ? `/expenses?from=${from}&to=${to}` : '/expenses';
-  const { data: expenses, refetch } = useFetch<Expense[]>(expensesUrl);
+  const { data: expenses, loading: expensesLoading, refetch } = useFetch<Expense[]>(expensesUrl);
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const canCreate = user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes('EXPENSES');
@@ -208,6 +208,11 @@ export default function Expenses() {
                   </td>
                 </tr>
               ))}
+              {expensesLoading && !expenses && (
+                <tr>
+                  <td colSpan={6} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
               {expenses?.length === 0 && (
                 <tr>
                   <td colSpan={6} className="muted" style={{ padding: 16 }}>No expenses for this period.</td>

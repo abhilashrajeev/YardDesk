@@ -17,7 +17,7 @@ interface LedgerEntry {
 }
 
 export default function Vendors() {
-  const { data: vendors, refetch } = useFetch<Vendor[]>('/vendors');
+  const { data: vendors, loading: vendorsLoading, refetch } = useFetch<Vendor[]>('/vendors');
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const [name, setName] = useState('');
@@ -207,6 +207,11 @@ export default function Vendors() {
                   </td>
                 </tr>
               ))}
+              {vendorsLoading && !vendors && (
+                <tr>
+                  <td colSpan={3} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
               {vendors?.length === 0 && (
                 <tr>
                   <td colSpan={3} className="muted" style={{ padding: 16 }}>No vendors yet.</td>

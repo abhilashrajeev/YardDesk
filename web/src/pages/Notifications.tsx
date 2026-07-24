@@ -3,7 +3,7 @@ import { useFetch, fmtDate, notifyNotificationsChanged } from '../lib/hooks';
 import type { Notification } from '../types';
 
 export default function Notifications() {
-  const { data: items, refetch } = useFetch<Notification[]>('/notifications');
+  const { data: items, loading: itemsLoading, refetch } = useFetch<Notification[]>('/notifications');
 
   async function markRead(id: string) {
     try {
@@ -65,6 +65,11 @@ export default function Notifications() {
                   </td>
                 </tr>
               ))}
+              {itemsLoading && !items && (
+                <tr>
+                  <td colSpan={5} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
               {items?.length === 0 && (
                 <tr>
                   <td colSpan={5} className="muted" style={{ padding: 16 }}>No notifications.</td>

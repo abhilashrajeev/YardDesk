@@ -19,7 +19,7 @@ export default function Purchases() {
   const [period, setPeriod] = useState(defaultPeriodState());
   const { from, to } = periodRange(period);
   const purchasesUrl = from ? `/purchases?from=${from}&to=${to}` : '/purchases';
-  const { data: purchases, refetch } = useFetch<Purchase[]>(purchasesUrl);
+  const { data: purchases, loading: purchasesLoading, refetch } = useFetch<Purchase[]>(purchasesUrl);
   const { data: vendors, setData: setVendors } = useFetch<Vendor[]>('/vendors');
   const { data: materials } = useFetch<Material[]>('/inventory');
   const { data: vehicles, refetch: refetchVehicles } = useFetch<Vehicle[]>('/vehicles');
@@ -156,6 +156,11 @@ export default function Purchases() {
                   </td>
                 </tr>
               ))}
+              {purchasesLoading && !purchases && (
+                <tr>
+                  <td colSpan={7} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
               {purchases?.length === 0 && (
                 <tr>
                   <td colSpan={7} className="muted" style={{ padding: 16 }}>No purchases for this period.</td>

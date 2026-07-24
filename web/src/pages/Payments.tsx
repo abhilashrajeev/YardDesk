@@ -7,7 +7,7 @@ import ExportCsvButton from '../components/ExportCsvButton';
 import type { Customer, Vendor, Payment, PaymentMode } from '../types';
 
 export default function Payments() {
-  const { data: payments, refetch } = useFetch<Payment[]>('/accounts/payments');
+  const { data: payments, loading: paymentsLoading, refetch } = useFetch<Payment[]>('/accounts/payments');
   const { data: customers } = useFetch<Customer[]>('/customers');
   const { data: vendors } = useFetch<Vendor[]>('/vendors');
   const { user } = useAuth();
@@ -197,6 +197,11 @@ export default function Payments() {
                   </td>
                 </tr>
               ))}
+              {paymentsLoading && !payments && (
+                <tr>
+                  <td colSpan={6} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
               {payments?.length === 0 && (
                 <tr>
                   <td colSpan={6} className="muted" style={{ padding: 16 }}>No payments yet.</td>

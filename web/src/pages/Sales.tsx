@@ -19,7 +19,7 @@ export default function Sales() {
   const [period, setPeriod] = useState(defaultPeriodState());
   const { from, to } = periodRange(period);
   const salesUrl = from ? `/sales?from=${from}&to=${to}` : '/sales';
-  const { data: sales, refetch } = useFetch<Sale[]>(salesUrl);
+  const { data: sales, loading: salesLoading, refetch } = useFetch<Sale[]>(salesUrl);
   const { data: customers, setData: setCustomers } = useFetch<Customer[]>('/customers');
   const { data: materials } = useFetch<Material[]>('/inventory');
   const { data: vehicles, refetch: refetchVehicles } = useFetch<Vehicle[]>('/vehicles');
@@ -161,6 +161,11 @@ export default function Sales() {
                   </td>
                 </tr>
               ))}
+              {salesLoading && !sales && (
+                <tr>
+                  <td colSpan={8} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
               {sales?.length === 0 && (
                 <tr>
                   <td colSpan={8} className="muted" style={{ padding: 16 }}>No sales for this period.</td>

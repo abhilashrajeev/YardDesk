@@ -19,9 +19,9 @@ export default function Inventory() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const canAdjust = isAdmin && (user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes('STOCK'));
-  const { data: stock, refetch } = useFetch<Material[]>('/inventory');
+  const { data: stock, loading: stockLoading, refetch } = useFetch<Material[]>('/inventory');
   const [selected, setSelected] = useState<string | null>(null);
-  const { data: movements, refetch: refetchMovements } = useFetch<Movement[]>(
+  const { data: movements, loading: movementsLoading, refetch: refetchMovements } = useFetch<Movement[]>(
     selected ? `/inventory/movements?materialId=${selected}` : null,
   );
 
@@ -147,6 +147,11 @@ export default function Inventory() {
                   )}
                 </Fragment>
               ))}
+              {stockLoading && !stock && (
+                <tr>
+                  <td colSpan={4} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -188,6 +193,11 @@ export default function Inventory() {
                     </td>
                   </tr>
                 ))}
+                {movementsLoading && !movements && (
+                  <tr>
+                    <td colSpan={7} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
