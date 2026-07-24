@@ -51,6 +51,16 @@ export default function Vehicles() {
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
   const needsLinking = (vehicles ?? []).filter((v) => v.ownerName && !isLinked(v) && !skipped.has(v.id));
 
+  const [search, setSearch] = useState('');
+  const filteredVehicles = (vehicles ?? []).filter((v) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    // Strip dashes/spaces so "8203" also matches the last few digits of "KL-01-BJ-8203" —
+    // that's usually all a driver remembers of their own plate.
+    const normalizedNumber = v.number.replace(/[-\s]/g, '').toLowerCase();
+    return normalizedNumber.includes(q.replace(/[-\s]/g, '')) || (v.ownerName ?? '').toLowerCase().includes(q);
+  });
+
   function startEdit(v: Vehicle) {
     setEditing(v);
     const cap = displayCapacity(v);
@@ -297,7 +307,15 @@ export default function Vehicles() {
       )}
 
       <div className="panel">
-        <h2>All Vehicles</h2>
+        <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+          <h2 style={{ margin: 0, padding: 0, border: 0 }}>All Vehicles</h2>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by vehicle number (even just last 4 digits) or owner name"
+            style={{ maxWidth: 340 }}
+          />
+        </div>
         <div className="body" style={{ padding: 0 }}>
           <table>
             <thead>
@@ -311,7 +329,7 @@ export default function Vehicles() {
               </tr>
             </thead>
             <tbody>
-              {vehicles?.map((v) => (
+              {filteredVehicles.map((v) => (
                 <tr key={v.id}>
                   <td style={{ fontWeight: 600 }}>{v.number}</td>
                   <td className="muted">{v.ownerName ?? '—'}</td>
@@ -331,6 +349,11 @@ export default function Vehicles() {
               {vehicles?.length === 0 && (
                 <tr>
                   <td colSpan={6} className="muted" style={{ padding: 16 }}>No vehicles yet.</td>
+                </tr>
+              )}
+              {(vehicles?.length ?? 0) > 0 && filteredVehicles.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="muted" style={{ padding: 16 }}>No vehicles match "{search}".</td>
                 </tr>
               )}
             </tbody>
