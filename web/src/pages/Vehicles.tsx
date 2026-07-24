@@ -26,7 +26,7 @@ function isLinked(v: Vehicle): boolean {
 }
 
 export default function Vehicles() {
-  const { data: vehicles, refetch } = useFetch<Vehicle[]>('/vehicles');
+  const { data: vehicles, loading: vehiclesLoading, refetch } = useFetch<Vehicle[]>('/vehicles');
   const { data: customers, setData: setCustomers } = useFetch<Customer[]>('/customers');
   const { data: vendors, setData: setVendors } = useFetch<Vendor[]>('/vendors');
   const { user } = useAuth();
@@ -346,6 +346,11 @@ export default function Vehicles() {
                   </td>
                 </tr>
               ))}
+              {vehiclesLoading && !vehicles && (
+                <tr>
+                  <td colSpan={6} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                </tr>
+              )}
               {vehicles?.length === 0 && (
                 <tr>
                   <td colSpan={6} className="muted" style={{ padding: 16 }}>No vehicles yet.</td>
