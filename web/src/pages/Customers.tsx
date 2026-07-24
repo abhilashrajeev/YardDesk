@@ -26,6 +26,12 @@ export default function Customers() {
   const [openingBalance, setOpeningBalance] = useState(0);
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const filteredCustomers = (customers ?? []).filter((c) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return c.name.toLowerCase().includes(q) || (c.phone ?? '').includes(q);
+  });
   const [ledgerFor, setLedgerFor] = useState<Customer | null>(null);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [saving, setSaving] = useState(false);
@@ -176,7 +182,15 @@ export default function Customers() {
       </form>
 
       <div className="panel">
-        <h2>All Customers</h2>
+        <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+          <h2 style={{ margin: 0, padding: 0, border: 0 }}>All Customers</h2>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or phone"
+            style={{ maxWidth: 280 }}
+          />
+        </div>
         <div className="body" style={{ padding: 0 }}>
           <table>
             <thead>
@@ -188,7 +202,7 @@ export default function Customers() {
               </tr>
             </thead>
             <tbody>
-              {customers?.map((c) => (
+              {filteredCustomers.map((c) => (
                 <tr key={c.id}>
                   <td>{c.name}</td>
                   <td className="muted">{c.phone ?? '—'}</td>
@@ -207,6 +221,16 @@ export default function Customers() {
                   </td>
                 </tr>
               ))}
+              {customers?.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="muted" style={{ padding: 16 }}>No customers yet.</td>
+                </tr>
+              )}
+              {(customers?.length ?? 0) > 0 && filteredCustomers.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="muted" style={{ padding: 16 }}>No customers match "{search}".</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

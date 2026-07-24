@@ -25,6 +25,12 @@ export default function Vendors() {
   const [openingBalance, setOpeningBalance] = useState(0);
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const filteredVendors = (vendors ?? []).filter((v) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return v.name.toLowerCase().includes(q) || (v.phone ?? '').includes(q);
+  });
   const [ledgerFor, setLedgerFor] = useState<Vendor | null>(null);
   const [editing, setEditing] = useState<Vendor | null>(null);
   const [saving, setSaving] = useState(false);
@@ -164,7 +170,15 @@ export default function Vendors() {
       </form>
 
       <div className="panel">
-        <h2>All Vendors</h2>
+        <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+          <h2 style={{ margin: 0, padding: 0, border: 0 }}>All Vendors</h2>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or phone"
+            style={{ maxWidth: 280 }}
+          />
+        </div>
         <div className="body" style={{ padding: 0 }}>
           <table>
             <thead>
@@ -175,7 +189,7 @@ export default function Vendors() {
               </tr>
             </thead>
             <tbody>
-              {vendors?.map((v) => (
+              {filteredVendors.map((v) => (
                 <tr key={v.id}>
                   <td>{v.name}</td>
                   <td className="muted">{v.phone ?? '—'}</td>
@@ -193,6 +207,16 @@ export default function Vendors() {
                   </td>
                 </tr>
               ))}
+              {vendors?.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="muted" style={{ padding: 16 }}>No vendors yet.</td>
+                </tr>
+              )}
+              {(vendors?.length ?? 0) > 0 && filteredVendors.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="muted" style={{ padding: 16 }}>No vendors match "{search}".</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
