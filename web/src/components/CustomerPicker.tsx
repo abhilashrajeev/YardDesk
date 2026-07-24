@@ -8,13 +8,16 @@ interface Props {
   value: string;
   onChange: (customerId: string) => void;
   onCreated: (customer: Customer) => void;
+  /** Prefills the search box (and the "add new" name) the first time this picker is
+   *  opened — e.g. from a free-text owner name typed elsewhere on the same form. */
+  initialQuery?: string;
 }
 
 /** Searchable customer dropdown (for 100+ customers) with inline "add new customer" quick entry. */
-export default function CustomerPicker({ customers, value, onChange, onCreated }: Props) {
+export default function CustomerPicker({ customers, value, onChange, onCreated, initialQuery }: Props) {
   const selected = customers.find((c) => c.id === value);
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery ?? '');
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
@@ -22,6 +25,9 @@ export default function CustomerPicker({ customers, value, onChange, onCreated }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const boxRef = useRef<HTMLDivElement>(null);
+  // Only the first focus should show the seeded query — after that, focusing
+  // resets to blank like a normal search box.
+  const seededQuery = useRef(initialQuery ?? '');
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -72,7 +78,8 @@ export default function CustomerPicker({ customers, value, onChange, onCreated }
         placeholder="Search customer by name/phone…"
         onFocus={() => {
           setOpen(true);
-          setQuery('');
+          setQuery(seededQuery.current);
+          seededQuery.current = '';
         }}
         onChange={(e) => setQuery(e.target.value)}
       />

@@ -193,9 +193,24 @@ export default function Vehicles() {
               <select
                 value={linkType}
                 onChange={(e) => {
-                  setLinkType(e.target.value as '' | 'CUSTOMER' | 'VENDOR');
-                  setLinkPartyId('');
-                  setOwnerName('');
+                  const type = e.target.value as '' | 'CUSTOMER' | 'VENDOR';
+                  setLinkType(type);
+                  // If an owner name was already typed, try to connect it to an existing
+                  // customer/vendor of that exact name — saves re-searching for someone
+                  // who's already registered. No match just leaves it to pick or add.
+                  const typedName = ownerName.trim().toLowerCase();
+                  const match =
+                    type === 'CUSTOMER'
+                      ? customers?.find((c) => c.name.trim().toLowerCase() === typedName)
+                      : type === 'VENDOR'
+                        ? vendors?.find((v) => v.name.trim().toLowerCase() === typedName)
+                        : undefined;
+                  if (typedName && match) {
+                    setLinkPartyId(match.id);
+                    setOwnerName(match.name);
+                  } else {
+                    setLinkPartyId('');
+                  }
                 }}
               >
                 <option value="">Not linked</option>
@@ -209,6 +224,7 @@ export default function Vehicles() {
                 <CustomerPicker
                   customers={customers}
                   value={linkPartyId}
+                  initialQuery={ownerName}
                   onChange={(id) => {
                     setLinkPartyId(id);
                     setOwnerName(customers.find((c) => c.id === id)?.name ?? '');
@@ -226,6 +242,7 @@ export default function Vehicles() {
                 <VendorPicker
                   vendors={vendors}
                   value={linkPartyId}
+                  initialQuery={ownerName}
                   onChange={(id) => {
                     setLinkPartyId(id);
                     setOwnerName(vendors.find((v) => v.id === id)?.name ?? '');

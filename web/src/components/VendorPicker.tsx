@@ -8,16 +8,19 @@ interface Props {
   value: string;
   onChange: (vendorId: string) => void;
   onCreated: (vendor: Vendor) => void;
+  /** Prefills the search box (and the "add new" name) the first time this picker is
+   *  opened — e.g. from a free-text owner name typed elsewhere on the same form. */
+  initialQuery?: string;
 }
 
 /**
  * Searchable vendor dropdown with inline "add new vendor" quick entry — for one-off
  * purchases from an outsourced/unregistered supplier who isn't in the vendor list yet.
  */
-export default function VendorPicker({ vendors, value, onChange, onCreated }: Props) {
+export default function VendorPicker({ vendors, value, onChange, onCreated, initialQuery }: Props) {
   const selected = vendors.find((v) => v.id === value);
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery ?? '');
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
@@ -25,6 +28,7 @@ export default function VendorPicker({ vendors, value, onChange, onCreated }: Pr
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const boxRef = useRef<HTMLDivElement>(null);
+  const seededQuery = useRef(initialQuery ?? '');
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -75,7 +79,8 @@ export default function VendorPicker({ vendors, value, onChange, onCreated }: Pr
         placeholder="Search vendor by name/phone…"
         onFocus={() => {
           setOpen(true);
-          setQuery('');
+          setQuery(seededQuery.current);
+          seededQuery.current = '';
         }}
         onChange={(e) => setQuery(e.target.value)}
       />
