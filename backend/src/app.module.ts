@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
@@ -26,6 +27,9 @@ import { HealthController } from './health.controller';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    // Generous global default so normal API usage is never affected; auth.controller.ts
+    // overrides this with a much tighter limit on login/refresh specifically.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,
     AuthModule,
     MaterialsModule,
@@ -46,7 +50,9 @@ import { HealthController } from './health.controller';
   ],
   controllers: [HealthController],
   providers: [
-    // Order matters: authenticate, then role, then fine-grained permission.
+    // Order matters: rate-limit first (so it applies even to @Public() routes like
+    // login), then authenticate, then role, then fine-grained permission.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
