@@ -34,10 +34,9 @@ export default function Vehicles() {
 
   const [number, setNumber] = useState('');
   const [ownerName, setOwnerName] = useState('');
-  const [ownerPhone, setOwnerPhone] = useState('');
   const [capacity, setCapacity] = useState(0);
   const [extraBodyCft, setExtraBodyCft] = useState(0);
-  const [linkType, setLinkType] = useState<'' | 'CUSTOMER' | 'VENDOR'>('');
+  const [linkType, setLinkType] = useState<'CUSTOMER' | 'VENDOR'>('CUSTOMER');
   const [linkPartyId, setLinkPartyId] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -73,23 +72,22 @@ export default function Vehicles() {
     e.preventDefault();
     setError('');
     if (!number.trim()) return setError('Vehicle number is required.');
-    if (linkType && !linkPartyId) return setError(`Pick or add a ${linkType === 'CUSTOMER' ? 'customer' : 'vendor'} to link this vehicle to.`);
+    if (!linkPartyId) return setError(`Pick or add a ${linkType === 'CUSTOMER' ? 'customer' : 'vendor'} to link this vehicle to.`);
     setSaving(true);
     try {
       await api.post('/vehicles', {
         number: number.trim(),
         ownerName: ownerName || undefined,
-        ownerPhone: ownerPhone || undefined,
         capacity: capacity > 0 ? Number(capacity) : undefined,
         extraBodyCft: extraBodyCft > 0 ? Number(extraBodyCft) : undefined,
       });
-      if (linkType === 'CUSTOMER' && linkPartyId) {
+      if (linkType === 'CUSTOMER') {
         await api.post(`/customers/${linkPartyId}/vehicles`, {
           vehicleNumber: number.trim(),
           quantityCft: capacity > 0 ? Number(capacity) : 0,
           extraBodyCft: extraBodyCft > 0 ? Number(extraBodyCft) : undefined,
         });
-      } else if (linkType === 'VENDOR' && linkPartyId) {
+      } else {
         await api.post(`/vendors/${linkPartyId}/vehicles`, {
           vehicleNumber: number.trim(),
           defaultQuantity: capacity > 0 ? Number(capacity) : 0,
@@ -97,10 +95,9 @@ export default function Vehicles() {
       }
       setNumber('');
       setOwnerName('');
-      setOwnerPhone('');
       setCapacity(0);
       setExtraBodyCft(0);
-      setLinkType('');
+      setLinkType('CUSTOMER');
       setLinkPartyId('');
       refetch();
     } catch (err) {
@@ -121,7 +118,6 @@ export default function Vehicles() {
       await api.patch(`/vehicles/${editing.id}`, {
         number: editing.number,
         ownerName: editing.ownerName || undefined,
-        ownerPhone: editing.ownerPhone || undefined,
         // Only write capacity/extra body onto the vehicle itself when no customer/vendor
         // registration owns those numbers — otherwise the table would keep showing the
         // registered value and this edit would look like it did nothing.
@@ -175,66 +171,25 @@ export default function Vehicles() {
               <VehicleNumberInput value={number} onChange={setNumber} required />
             </div>
             <div>
-              <label>Owner name</label>
-              <input
-                value={ownerName}
-                onChange={(e) => setOwnerName(e.target.value)}
-                disabled={!!linkType}
-                placeholder={linkType ? `Same as the linked ${linkType === 'CUSTOMER' ? 'customer' : 'vendor'}` : undefined}
-              />
-            </div>
-            <div>
-              <label>Owner phone</label>
-              <input value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} />
-            </div>
-            <div>
-              <label>Capacity (cft)</label>
-              <input type="number" value={capacity || ''} onChange={(e) => setCapacity(Number(e.target.value))} />
-            </div>
-            <div>
-              <label>Extra body capacity (cft, optional)</label>
-              <input type="number" value={extraBodyCft || ''} onChange={(e) => setExtraBodyCft(Number(e.target.value))} />
-            </div>
-          </div>
-
-          <div className="row">
-            <div>
-              <label>Link to (optional)</label>
+              <label>Link to</label>
               <select
                 value={linkType}
                 onChange={(e) => {
-                  const type = e.target.value as '' | 'CUSTOMER' | 'VENDOR';
-                  setLinkType(type);
-                  // If an owner name was already typed, try to connect it to an existing
-                  // customer/vendor of that exact name — saves re-searching for someone
-                  // who's already registered. No match just leaves it to pick or add.
-                  const typedName = ownerName.trim().toLowerCase();
-                  const match =
-                    type === 'CUSTOMER'
-                      ? customers?.find((c) => c.name.trim().toLowerCase() === typedName)
-                      : type === 'VENDOR'
-                        ? vendors?.find((v) => v.name.trim().toLowerCase() === typedName)
-                        : undefined;
-                  if (typedName && match) {
-                    setLinkPartyId(match.id);
-                    setOwnerName(match.name);
-                  } else {
-                    setLinkPartyId('');
-                  }
+                  setLinkType(e.target.value as 'CUSTOMER' | 'VENDOR');
+                  setLinkPartyId('');
+                  setOwnerName('');
                 }}
               >
-                <option value="">Not linked</option>
                 <option value="CUSTOMER">A customer</option>
                 <option value="VENDOR">A vendor</option>
               </select>
             </div>
-            {linkType === 'CUSTOMER' && customers && (
-              <div>
-                <label>Customer</label>
+            <div>
+              <label>{linkType === 'CUSTOMER' ? 'Customer' : 'Vendor'}</label>
+              {linkType === 'CUSTOMER' && customers && (
                 <CustomerPicker
                   customers={customers}
                   value={linkPartyId}
-                  initialQuery={ownerName}
                   onChange={(id) => {
                     setLinkPartyId(id);
                     setOwnerName(customers.find((c) => c.id === id)?.name ?? '');
@@ -244,15 +199,11 @@ export default function Vehicles() {
                     setOwnerName(c.name);
                   }}
                 />
-              </div>
-            )}
-            {linkType === 'VENDOR' && vendors && (
-              <div>
-                <label>Vendor</label>
+              )}
+              {linkType === 'VENDOR' && vendors && (
                 <VendorPicker
                   vendors={vendors}
                   value={linkPartyId}
-                  initialQuery={ownerName}
                   onChange={(id) => {
                     setLinkPartyId(id);
                     setOwnerName(vendors.find((v) => v.id === id)?.name ?? '');
@@ -262,8 +213,16 @@ export default function Vehicles() {
                     setOwnerName(v.name);
                   }}
                 />
-              </div>
-            )}
+              )}
+            </div>
+            <div>
+              <label>Capacity (cft)</label>
+              <input type="number" value={capacity || ''} onChange={(e) => setCapacity(Number(e.target.value))} />
+            </div>
+            <div>
+              <label>Extra body capacity (cft, optional)</label>
+              <input type="number" value={extraBodyCft || ''} onChange={(e) => setExtraBodyCft(Number(e.target.value))} />
+            </div>
           </div>
 
           {error && <div className="err">{error}</div>}
@@ -322,7 +281,6 @@ export default function Vehicles() {
               <tr>
                 <th>Number</th>
                 <th>Owner</th>
-                <th>Phone</th>
                 <th className="num">Capacity (cft)</th>
                 <th className="num">Extra body capacity (cft)</th>
                 <th></th>
@@ -333,7 +291,6 @@ export default function Vehicles() {
                 <tr key={v.id}>
                   <td style={{ fontWeight: 600 }}>{v.number}</td>
                   <td className="muted">{v.ownerName ?? '—'}</td>
-                  <td className="muted">{v.ownerPhone ?? '—'}</td>
                   <td className="num">{displayCapacity(v)}</td>
                   <td className="num">{displayExtraBody(v)}</td>
                   <td className="right">
@@ -348,17 +305,17 @@ export default function Vehicles() {
               ))}
               {vehiclesLoading && !vehicles && (
                 <tr>
-                  <td colSpan={6} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                  <td colSpan={5} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
                 </tr>
               )}
               {vehicles?.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="muted" style={{ padding: 16 }}>No vehicles yet.</td>
+                  <td colSpan={5} className="muted" style={{ padding: 16 }}>No vehicles yet.</td>
                 </tr>
               )}
               {(vehicles?.length ?? 0) > 0 && filteredVehicles.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="muted" style={{ padding: 16 }}>No vehicles match "{search}".</td>
+                  <td colSpan={5} className="muted" style={{ padding: 16 }}>No vehicles match "{search}".</td>
                 </tr>
               )}
             </tbody>
@@ -378,10 +335,6 @@ export default function Vehicles() {
               <div>
                 <label>Owner name</label>
                 <input value={editing.ownerName ?? ''} onChange={(e) => setEditing({ ...editing, ownerName: e.target.value })} />
-              </div>
-              <div>
-                <label>Owner phone</label>
-                <input value={editing.ownerPhone ?? ''} onChange={(e) => setEditing({ ...editing, ownerPhone: e.target.value })} />
               </div>
               <div>
                 <label>Capacity (cft)</label>
@@ -458,10 +411,7 @@ function VehicleLinkRow({
     <>
       <tr>
         <td style={{ fontWeight: 600, verticalAlign: 'top' }}>{vehicle.number}</td>
-        <td className="muted" style={{ verticalAlign: 'top' }}>
-          {vehicle.ownerName ?? '—'}
-          {vehicle.ownerPhone && <div style={{ fontSize: 12 }}>{vehicle.ownerPhone}</div>}
-        </td>
+        <td className="muted" style={{ verticalAlign: 'top' }}>{vehicle.ownerName ?? '—'}</td>
         <td className="num" style={{ verticalAlign: 'top' }}>{vehicle.capacity ?? '—'}</td>
         <td className="right">
           {mode === 'idle' ? (
