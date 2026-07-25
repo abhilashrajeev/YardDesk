@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -12,12 +12,26 @@ export class VehiclesService {
   ) {}
 
   async create(dto: CreateVehicleDto, userId: string) {
-    const vehicle = await this.prisma.vehicle.create({ data: dto });
+    const number = dto.number.trim();
+    // The number is unique regardless of isActive, so re-adding one that was
+    // previously deleted would otherwise hit the DB's unique constraint —
+    // reactivate that same record instead of trying to insert a duplicate.
+    const existing = await this.prisma.vehicle.findFirst({
+      where: { number: { equals: number, mode: 'insensitive' } },
+    });
+    if (existing && existing.isActive) {
+      throw new ConflictException('A vehicle with this number already exists.');
+    }
+
+    const vehicle = existing
+      ? await this.prisma.vehicle.update({ where: { id: existing.id }, data: { ...dto, number, isActive: true } })
+      : await this.prisma.vehicle.create({ data: { ...dto, number } });
+
     await this.audit.log({
       entityType: 'VEHICLE',
       entityId: vehicle.id,
-      action: AuditAction.CREATE,
-      summary: `Vehicle added: ${vehicle.number}`,
+      action: existing ? AuditAction.UPDATE : AuditAction.CREATE,
+      summary: existing ? `Vehicle restored: ${vehicle.number}` : `Vehicle added: ${vehicle.number}`,
       after: vehicle,
       userId,
     });

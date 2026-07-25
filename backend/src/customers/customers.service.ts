@@ -108,10 +108,15 @@ export class CustomersService {
     if (!vehicle) {
       // Brand-new vehicle registered via a customer — stamp the customer as its owner.
       vehicle = await this.prisma.vehicle.create({ data: { number, ownerName: customer.name } });
-    } else if (vehicle.ownerName !== customer.name) {
+    } else if (vehicle.ownerName !== customer.name || !vehicle.isActive) {
       // Linking to an existing vehicle re-attributes it to this customer, so the owner
       // name shown on the Vehicles page always matches the party it's actually linked to.
-      vehicle = await this.prisma.vehicle.update({ where: { id: vehicle.id }, data: { ownerName: customer.name } });
+      // Also reactivate it if it was previously deleted — otherwise it'd stay hidden
+      // from the Vehicles list despite now being linked again.
+      vehicle = await this.prisma.vehicle.update({
+        where: { id: vehicle.id },
+        data: { ownerName: customer.name, isActive: true },
+      });
     }
 
     const quantityCft = dto.quantityCft ?? (vehicle.capacity ? Number(vehicle.capacity) : 0);

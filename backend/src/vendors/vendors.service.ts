@@ -107,10 +107,15 @@ export class VendorsService {
     });
     if (!vehicle) {
       vehicle = await this.prisma.vehicle.create({ data: { number, ownerName: vendor.name } });
-    } else if (vehicle.ownerName !== vendor.name) {
+    } else if (vehicle.ownerName !== vendor.name || !vehicle.isActive) {
       // Linking to an existing vehicle re-attributes it to this vendor, so the owner
       // name shown on the Vehicles page always matches the party it's actually linked to.
-      vehicle = await this.prisma.vehicle.update({ where: { id: vehicle.id }, data: { ownerName: vendor.name } });
+      // Also reactivate it if it was previously deleted — otherwise it'd stay hidden
+      // from the Vehicles list despite now being linked again.
+      vehicle = await this.prisma.vehicle.update({
+        where: { id: vehicle.id },
+        data: { ownerName: vendor.name, isActive: true },
+      });
     }
 
     const defaultQuantity = dto.defaultQuantity ?? (vehicle.capacity ? Number(vehicle.capacity) : 0);
