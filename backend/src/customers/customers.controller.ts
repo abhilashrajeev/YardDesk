@@ -32,7 +32,8 @@ export class CustomersController {
     return this.customers.create(dto, user.userId);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  // Any authenticated user can edit a customer's details — only deactivating one
+  // (below) is restricted to admins.
   @Patch(':id')
   update(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdateCustomerDto) {
     return this.customers.update(id, dto, user.userId);

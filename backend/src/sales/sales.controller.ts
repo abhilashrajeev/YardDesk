@@ -1,8 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { Permission } from '@prisma/client';
+import { Permission, Role } from '@prisma/client';
 import { SalesService } from './sales.service';
 import { CreateSaleDto, UpdateSaleDto, CreatePassDto } from './dto';
-import { CurrentUser, AuthUser, RequirePermission } from '../auth/decorators';
+import { CurrentUser, AuthUser, RequirePermission, Roles } from '../auth/decorators';
 
 @Controller('sales')
 export class SalesController {
@@ -34,21 +34,25 @@ export class SalesController {
     return this.sales.findOne(id);
   }
 
+  @RequirePermission(Permission.SALES)
   @Patch(':id')
   update(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdateSaleDto) {
     return this.sales.update(id, dto, user.userId);
   }
 
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.sales.remove(id, user.userId);
   }
 
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Post(':id/restore')
   restore(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.sales.restore(id, user.userId);
   }
 
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Delete(':id/permanent')
   hardDelete(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.sales.hardDelete(id, user.userId);

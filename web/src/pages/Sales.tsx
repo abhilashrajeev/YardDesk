@@ -151,11 +151,11 @@ export default function Sales() {
                   <td className="right">
                     <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
                       <button className="btn ghost sm" onClick={() => { setViewId(s.id); setViewEdit(false); }}>View</button>
+                      {canCreate && s.status !== 'CANCELLED' && (
+                        <button className="btn ghost sm" onClick={() => { setViewId(s.id); setViewEdit(true); }}>Edit</button>
+                      )}
                       {isAdmin && s.status !== 'CANCELLED' && (
-                        <>
-                          <button className="btn ghost sm" onClick={() => { setViewId(s.id); setViewEdit(true); }}>Edit</button>
-                          <button className="btn ghost sm" onClick={() => quickDelete(s)}>Delete</button>
-                        </>
+                        <button className="btn ghost sm" onClick={() => quickDelete(s)}>Delete</button>
                       )}
                     </div>
                   </td>

@@ -337,12 +337,12 @@ export default function Vehicles() {
                   <td className="num">{displayCapacity(v)}</td>
                   <td className="num">{displayExtraBody(v)}</td>
                   <td className="right">
-                    {isAdmin && (
-                      <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
-                        <button className="btn ghost sm" onClick={() => startEdit(v)}>Edit</button>
+                    <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                      <button className="btn ghost sm" onClick={() => startEdit(v)}>Edit</button>
+                      {isAdmin && (
                         <button className="btn ghost sm" onClick={() => remove(v.id)}>Delete</button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

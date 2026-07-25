@@ -197,11 +197,9 @@ export default function Vendors() {
                     <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
                       <button className="btn sm ghost" onClick={() => setLedgerFor(v)}>Ledger</button>
                       <button className="btn sm ghost" onClick={() => setVehiclesFor(v)}>Vehicles</button>
+                      <button className="btn sm ghost" onClick={() => setEditing(v)}>Edit</button>
                       {isAdmin && (
-                        <>
-                          <button className="btn sm ghost" onClick={() => setEditing(v)}>Edit</button>
-                          <button className="btn sm ghost" onClick={() => remove(v)}>Delete</button>
-                        </>
+                        <button className="btn sm ghost" onClick={() => remove(v)}>Delete</button>
                       )}
                     </div>
                   </td>

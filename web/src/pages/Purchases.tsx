@@ -146,11 +146,11 @@ export default function Purchases() {
                   <td className="right">
                     <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
                       <button className="btn ghost sm" onClick={() => { setViewId(p.id); setViewEdit(false); }}>View</button>
+                      {canCreate && p.status !== 'CANCELLED' && (
+                        <button className="btn ghost sm" onClick={() => { setViewId(p.id); setViewEdit(true); }}>Edit</button>
+                      )}
                       {isAdmin && p.status !== 'CANCELLED' && (
-                        <>
-                          <button className="btn ghost sm" onClick={() => { setViewId(p.id); setViewEdit(true); }}>Edit</button>
-                          <button className="btn ghost sm" onClick={() => quickDelete(p)}>Delete</button>
-                        </>
+                        <button className="btn ghost sm" onClick={() => quickDelete(p)}>Delete</button>
                       )}
                     </div>
                   </td>

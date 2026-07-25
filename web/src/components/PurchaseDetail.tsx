@@ -22,6 +22,7 @@ export default function PurchaseDetail({
   const { data: purchase, refetch } = useFetch<Purchase>(`/purchases/${id}`);
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  const canEdit = user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes('PURCHASES');
   const [editing, setEditing] = useState(!!startInEdit);
   const [busy, setBusy] = useState(false);
 
@@ -149,12 +150,12 @@ export default function PurchaseDetail({
         />
       )}
 
-      {isAdmin && purchase.status !== 'CANCELLED' && (
+      {purchase.status !== 'CANCELLED' && (canEdit || isAdmin) && (
         <div className="between" style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <div />
           <div className="flex" style={{ gap: 6 }}>
-            <button className="btn ghost sm" onClick={() => setEditing(true)}>Edit</button>
-            <button className="btn ghost sm" onClick={removePurchase}>Delete</button>
+            {canEdit && <button className="btn ghost sm" onClick={() => setEditing(true)}>Edit</button>}
+            {isAdmin && <button className="btn ghost sm" onClick={removePurchase}>Delete</button>}
           </div>
         </div>
       )}

@@ -31,7 +31,8 @@ export class VehiclesController {
     return this.vehicles.create(dto, user.userId);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  // Any authenticated user can edit a vehicle's details — only deactivating one
+  // (below) is restricted to admins.
   @Patch(':id')
   update(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdateVehicleDto) {
     return this.vehicles.update(id, dto, user.userId);

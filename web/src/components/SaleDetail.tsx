@@ -23,6 +23,7 @@ export default function SaleDetail({
   const { data: sale, refetch } = useFetch<Sale>(`/sales/${id}`);
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  const canEdit = user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes('SALES');
   const [editing, setEditing] = useState(!!startInEdit);
   const [busy, setBusy] = useState(false);
 
@@ -184,10 +185,10 @@ export default function SaleDetail({
             <button className="btn ghost sm" onClick={() => issuePass('loading-pass')}>Issue Loading Pass</button>
           )}
         </div>
-        {isAdmin && sale.status !== 'CANCELLED' && (
+        {sale.status !== 'CANCELLED' && (canEdit || isAdmin) && (
           <div className="flex" style={{ gap: 6 }}>
-            <button className="btn ghost sm" onClick={() => setEditing(true)}>Edit</button>
-            <button className="btn ghost sm" onClick={removeSale}>Delete</button>
+            {canEdit && <button className="btn ghost sm" onClick={() => setEditing(true)}>Edit</button>}
+            {isAdmin && <button className="btn ghost sm" onClick={removeSale}>Delete</button>}
           </div>
         )}
         {isAdmin && sale.status === 'CANCELLED' && (

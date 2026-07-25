@@ -211,11 +211,9 @@ export default function Customers() {
                     <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
                       <button className="btn sm ghost" onClick={() => setLedgerFor(c)}>Ledger</button>
                       <button className="btn sm ghost" onClick={() => setVehiclesFor(c)}>Vehicles</button>
+                      <button className="btn sm ghost" onClick={() => setEditing(c)}>Edit</button>
                       {isAdmin && (
-                        <>
-                          <button className="btn sm ghost" onClick={() => setEditing(c)}>Edit</button>
-                          <button className="btn sm ghost" onClick={() => remove(c)}>Delete</button>
-                        </>
+                        <button className="btn sm ghost" onClick={() => remove(c)}>Delete</button>
                       )}
                     </div>
                   </td>
