@@ -199,12 +199,10 @@ export default function Expenses() {
                   <td className="muted">{e.mode}</td>
                   <td className="num">{money(e.amount)}</td>
                   <td className="right">
-                    {isAdmin && (
-                      <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
-                        <button className="btn ghost sm" onClick={() => setEditing(e)}>Edit</button>
-                        <button className="btn ghost sm" onClick={() => remove(e.id)}>Delete</button>
-                      </div>
-                    )}
+                    <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                      {canCreate && <button className="btn ghost sm" onClick={() => setEditing(e)}>Edit</button>}
+                      {isAdmin && <button className="btn ghost sm" onClick={() => remove(e.id)}>Delete</button>}
+                    </div>
                   </td>
                 </tr>
               ))}

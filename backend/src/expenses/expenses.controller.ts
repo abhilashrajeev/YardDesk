@@ -38,11 +38,13 @@ export class ExpensesController {
     return this.expenses.findOne(id);
   }
 
+  @RequirePermission(Permission.EXPENSES)
   @Patch(':id')
   update(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdateExpenseDto) {
     return this.expenses.update(id, dto, user.userId);
   }
 
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.expenses.remove(id, user.userId);

@@ -13,10 +13,11 @@ export class CustomersService {
 
   async create(dto: CreateCustomerDto, userId: string) {
     const { vehicleNumber, ...data } = dto;
-    // This endpoint has no role restriction, but re-attributing an *existing* vehicle's
-    // owner is an ADMIN-only action (see the @Roles guard on POST /customers/:id/vehicles).
-    // Check before creating anything, so a duplicate number is rejected with a clear error
-    // instead of the customer being created while the link is silently skipped.
+    // Neither this endpoint nor addVehicle() below restrict re-attributing an *existing*
+    // vehicle's owner by role — addVehicle() itself blocks taking over a vehicle that's
+    // already linked to someone else (see its own ConflictException). Check for a
+    // duplicate *active* number here too, so it's rejected with a clear error instead of
+    // the customer being created while the link silently fails inside addVehicle().
     if (vehicleNumber?.trim()) {
       const existing = await this.prisma.vehicle.findFirst({
         where: { number: { equals: vehicleNumber.trim(), mode: 'insensitive' }, isActive: true },
@@ -110,19 +111,32 @@ export class CustomersService {
 
     let vehicle = await this.prisma.vehicle.findFirst({
       where: { number: { equals: number, mode: 'insensitive' } },
+      include: { customerVehicles: true, vendorVehicles: true },
     });
     if (!vehicle) {
       // Brand-new vehicle registered via a customer — stamp the customer as its owner.
-      vehicle = await this.prisma.vehicle.create({ data: { number, ownerName: customer.name } });
-    } else if (vehicle.ownerName !== customer.name || !vehicle.isActive) {
-      // Linking to an existing vehicle re-attributes it to this customer, so the owner
-      // name shown on the Vehicles page always matches the party it's actually linked to.
-      // Also reactivate it if it was previously deleted — otherwise it'd stay hidden
-      // from the Vehicles list despite now being linked again.
-      vehicle = await this.prisma.vehicle.update({
-        where: { id: vehicle.id },
-        data: { ownerName: customer.name, isActive: true },
-      });
+      const created = await this.prisma.vehicle.create({ data: { number, ownerName: customer.name } });
+      vehicle = { ...created, customerVehicles: [], vendorVehicles: [] };
+    } else {
+      // This route is open to any authenticated user (linking is a required step of adding
+      // a vehicle at all), so it must not let one party silently take over a vehicle that's
+      // already linked to someone else.
+      const linkedElsewhere =
+        vehicle.customerVehicles.some((cv) => cv.customerId !== customerId) || vehicle.vendorVehicles.length > 0;
+      if (linkedElsewhere) {
+        throw new ConflictException(`Vehicle ${vehicle.number} is already linked to a different customer or vendor.`);
+      }
+      if (vehicle.ownerName !== customer.name || !vehicle.isActive) {
+        // Linking to an existing (but not-yet-linked) vehicle re-attributes it to this
+        // customer, so the owner name shown on the Vehicles page always matches the party
+        // it's actually linked to. Also reactivate it if it was previously deleted —
+        // otherwise it'd stay hidden from the Vehicles list despite now being linked again.
+        const updated = await this.prisma.vehicle.update({
+          where: { id: vehicle.id },
+          data: { ownerName: customer.name, isActive: true },
+        });
+        vehicle = { ...updated, customerVehicles: vehicle.customerVehicles, vendorVehicles: vehicle.vendorVehicles };
+      }
     }
 
     const quantityCft = dto.quantityCft ?? (vehicle.capacity ? Number(vehicle.capacity) : 0);

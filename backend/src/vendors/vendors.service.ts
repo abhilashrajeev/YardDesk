@@ -109,18 +109,31 @@ export class VendorsService {
 
     let vehicle = await this.prisma.vehicle.findFirst({
       where: { number: { equals: number, mode: 'insensitive' } },
+      include: { customerVehicles: true, vendorVehicles: true },
     });
     if (!vehicle) {
-      vehicle = await this.prisma.vehicle.create({ data: { number, ownerName: vendor.name } });
-    } else if (vehicle.ownerName !== vendor.name || !vehicle.isActive) {
-      // Linking to an existing vehicle re-attributes it to this vendor, so the owner
-      // name shown on the Vehicles page always matches the party it's actually linked to.
-      // Also reactivate it if it was previously deleted — otherwise it'd stay hidden
-      // from the Vehicles list despite now being linked again.
-      vehicle = await this.prisma.vehicle.update({
-        where: { id: vehicle.id },
-        data: { ownerName: vendor.name, isActive: true },
-      });
+      const created = await this.prisma.vehicle.create({ data: { number, ownerName: vendor.name } });
+      vehicle = { ...created, customerVehicles: [], vendorVehicles: [] };
+    } else {
+      // This route is open to any authenticated user (linking is a required step of adding
+      // a vehicle at all), so it must not let one party silently take over a vehicle that's
+      // already linked to someone else.
+      const linkedElsewhere =
+        vehicle.vendorVehicles.some((vv) => vv.vendorId !== vendorId) || vehicle.customerVehicles.length > 0;
+      if (linkedElsewhere) {
+        throw new ConflictException(`Vehicle ${vehicle.number} is already linked to a different customer or vendor.`);
+      }
+      if (vehicle.ownerName !== vendor.name || !vehicle.isActive) {
+        // Linking to an existing (but not-yet-linked) vehicle re-attributes it to this
+        // vendor, so the owner name shown on the Vehicles page always matches the party
+        // it's actually linked to. Also reactivate it if it was previously deleted —
+        // otherwise it'd stay hidden from the Vehicles list despite now being linked again.
+        const updated = await this.prisma.vehicle.update({
+          where: { id: vehicle.id },
+          data: { ownerName: vendor.name, isActive: true },
+        });
+        vehicle = { ...updated, customerVehicles: vehicle.customerVehicles, vendorVehicles: vehicle.vendorVehicles };
+      }
     }
 
     const defaultQuantity = dto.defaultQuantity ?? (vehicle.capacity ? Number(vehicle.capacity) : 0);

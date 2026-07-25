@@ -188,10 +188,10 @@ export default function Payments() {
                   <td className="right">
                     {p.voided ? (
                       <span className="pill neg">Voided</span>
-                    ) : isAdmin ? (
+                    ) : (canCreate || isAdmin) ? (
                       <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
-                        <button className="btn sm ghost" onClick={() => setEditing(p)}>Edit</button>
-                        <button className="btn sm ghost" onClick={() => remove(p)}>Delete</button>
+                        {canCreate && <button className="btn sm ghost" onClick={() => setEditing(p)}>Edit</button>}
+                        {isAdmin && <button className="btn sm ghost" onClick={() => remove(p)}>Delete</button>}
                       </div>
                     ) : null}
                   </td>

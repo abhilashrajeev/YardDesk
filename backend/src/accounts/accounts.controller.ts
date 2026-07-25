@@ -35,6 +35,7 @@ export class AccountsController {
     return this.payments.findOne(id);
   }
 
+  @RequirePermission(Permission.PAYMENTS)
   @Patch('payments/:id')
   updatePayment(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdatePaymentDto) {
     return this.payments.update(id, dto, user.userId);
@@ -46,6 +47,7 @@ export class AccountsController {
     return this.payments.allocate(id, dto, user.userId);
   }
 
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Delete('payments/:id')
   removePayment(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.payments.remove(id, user.userId);
