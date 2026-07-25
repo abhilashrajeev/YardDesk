@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -13,6 +13,20 @@ export class VendorsService {
 
   async create(dto: CreateVendorDto, userId: string) {
     const { vehicleNumber, ...data } = dto;
+    // POST /vendors is ADMIN-gated today, but keep this the same shape as the customer
+    // side for defense-in-depth: reject a duplicate vehicle number up front with a clear
+    // error, rather than creating the vendor while silently skipping the link.
+    if (vehicleNumber?.trim()) {
+      const existing = await this.prisma.vehicle.findFirst({
+        where: { number: { equals: vehicleNumber.trim(), mode: 'insensitive' }, isActive: true },
+      });
+      if (existing) {
+        throw new ConflictException(
+          `Vehicle ${existing.number} is already registered${existing.ownerName ? ` to ${existing.ownerName}` : ''}.`,
+        );
+      }
+    }
+
     const vendor = await this.prisma.vendor.create({ data });
     await this.audit.log({
       entityType: 'VENDOR',
@@ -23,16 +37,7 @@ export class VendorsService {
       userId,
     });
     if (vehicleNumber?.trim()) {
-      // POST /vendors is ADMIN-gated today, but keep this the same shape as the customer
-      // side for defense-in-depth: only auto-link a genuinely new vehicle number here —
-      // re-attributing an existing vehicle's owner stays behind the dedicated,
-      // explicitly ADMIN-only POST /vendors/:id/vehicles endpoint.
-      const existing = await this.prisma.vehicle.findFirst({
-        where: { number: { equals: vehicleNumber.trim(), mode: 'insensitive' } },
-      });
-      if (!existing) {
-        await this.addVehicle(vendor.id, { vehicleNumber }, userId);
-      }
+      await this.addVehicle(vendor.id, { vehicleNumber }, userId);
     }
     return vendor;
   }

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -13,6 +13,21 @@ export class CustomersService {
 
   async create(dto: CreateCustomerDto, userId: string) {
     const { vehicleNumber, ...data } = dto;
+    // This endpoint has no role restriction, but re-attributing an *existing* vehicle's
+    // owner is an ADMIN-only action (see the @Roles guard on POST /customers/:id/vehicles).
+    // Check before creating anything, so a duplicate number is rejected with a clear error
+    // instead of the customer being created while the link is silently skipped.
+    if (vehicleNumber?.trim()) {
+      const existing = await this.prisma.vehicle.findFirst({
+        where: { number: { equals: vehicleNumber.trim(), mode: 'insensitive' }, isActive: true },
+      });
+      if (existing) {
+        throw new ConflictException(
+          `Vehicle ${existing.number} is already registered${existing.ownerName ? ` to ${existing.ownerName}` : ''}.`,
+        );
+      }
+    }
+
     const customer = await this.prisma.customer.create({ data });
     await this.audit.log({
       entityType: 'CUSTOMER',
@@ -23,16 +38,7 @@ export class CustomersService {
       userId,
     });
     if (vehicleNumber?.trim()) {
-      // This endpoint has no role restriction, but re-attributing an *existing* vehicle's
-      // owner is an ADMIN-only action (see the @Roles guard on POST /customers/:id/vehicles).
-      // Only auto-link here when the number is genuinely new, so this shortcut can't be used
-      // to silently reassign someone else's already-registered vehicle.
-      const existing = await this.prisma.vehicle.findFirst({
-        where: { number: { equals: vehicleNumber.trim(), mode: 'insensitive' } },
-      });
-      if (!existing) {
-        await this.addVehicle(customer.id, { vehicleNumber }, userId);
-      }
+      await this.addVehicle(customer.id, { vehicleNumber }, userId);
     }
     return customer;
   }
