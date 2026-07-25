@@ -52,13 +52,14 @@ export class CustomersController {
     return this.customers.listVehicles(id);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  // Any authenticated user can link/update a customer's usual vehicle — linking is now
+  // a required step of adding a vehicle at all (see Vehicles page), so gating it to
+  // admins would block ordinary vehicle entry. Only removing a link stays admin-only.
   @Post(':id/vehicles')
   addVehicle(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: AddCustomerVehicleDto) {
     return this.customers.addVehicle(id, dto, user.userId);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Patch(':id/vehicles/:cvId')
   updateVehicle(
     @Param('id') id: string,

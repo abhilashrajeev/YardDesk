@@ -346,33 +346,31 @@ export default function Customers() {
               Some trucks add a second "extra body" for more load — track that separately if it applies.
               On a new sale, picking this customer + vehicle prefills the capacity — still editable.
             </p>
-            {isAdmin && (
-              <form onSubmit={addVehicle} className="row" style={{ alignItems: 'flex-end' }}>
-                <div>
-                  <label>Vehicle number</label>
-                  <VehicleNumberInput value={newVehicleNumber} onChange={setNewVehicleNumber} />
-                </div>
-                <div>
-                  <label>Capacity (cft)</label>
-                  <input
-                    type="number"
-                    value={newVehicleQty || ''}
-                    onChange={(e) => setNewVehicleQty(Number(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <label>Extra body capacity (cft, optional)</label>
-                  <input
-                    type="number"
-                    value={newVehicleExtraBody || ''}
-                    onChange={(e) => setNewVehicleExtraBody(Number(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <button className="btn sm">Add</button>
-                </div>
-              </form>
-            )}
+            <form onSubmit={addVehicle} className="row" style={{ alignItems: 'flex-end' }}>
+              <div>
+                <label>Vehicle number</label>
+                <VehicleNumberInput value={newVehicleNumber} onChange={setNewVehicleNumber} />
+              </div>
+              <div>
+                <label>Capacity (cft)</label>
+                <input
+                  type="number"
+                  value={newVehicleQty || ''}
+                  onChange={(e) => setNewVehicleQty(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label>Extra body capacity (cft, optional)</label>
+                <input
+                  type="number"
+                  value={newVehicleExtraBody || ''}
+                  onChange={(e) => setNewVehicleExtraBody(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <button className="btn sm">Add</button>
+              </div>
+            </form>
             {vehicleError && <div className="err">{vehicleError}</div>}
             <table style={{ marginTop: 12 }}>
               <thead>

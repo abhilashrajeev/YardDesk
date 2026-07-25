@@ -324,25 +324,23 @@ export default function Vendors() {
               On a new purchase, picking this vendor + vehicle prefills the quantity — still editable
               for the times it's different.
             </p>
-            {isAdmin && (
-              <form onSubmit={addVehicle} className="row" style={{ alignItems: 'flex-end' }}>
-                <div>
-                  <label>Vehicle number</label>
-                  <VehicleNumberInput value={newVehicleNumber} onChange={setNewVehicleNumber} />
-                </div>
-                <div>
-                  <label>Usual quantity</label>
-                  <input
-                    type="number"
-                    value={newVehicleQty || ''}
-                    onChange={(e) => setNewVehicleQty(Number(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <button className="btn sm">Add</button>
-                </div>
-              </form>
-            )}
+            <form onSubmit={addVehicle} className="row" style={{ alignItems: 'flex-end' }}>
+              <div>
+                <label>Vehicle number</label>
+                <VehicleNumberInput value={newVehicleNumber} onChange={setNewVehicleNumber} />
+              </div>
+              <div>
+                <label>Usual quantity</label>
+                <input
+                  type="number"
+                  value={newVehicleQty || ''}
+                  onChange={(e) => setNewVehicleQty(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <button className="btn sm">Add</button>
+              </div>
+            </form>
             {vehicleError && <div className="err">{vehicleError}</div>}
             <table style={{ marginTop: 12 }}>
               <thead>

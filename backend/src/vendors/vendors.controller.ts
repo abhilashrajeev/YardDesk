@@ -53,13 +53,14 @@ export class VendorsController {
     return this.vendors.listVehicles(id);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  // Any authenticated user can link/update a vendor's usual vehicle — linking is now
+  // a required step of adding a vehicle at all (see Vehicles page), so gating it to
+  // admins would block ordinary vehicle entry. Only removing a link stays admin-only.
   @Post(':id/vehicles')
   addVehicle(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: AddVendorVehicleDto) {
     return this.vendors.addVehicle(id, dto, user.userId);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Patch(':id/vehicles/:vvId')
   updateVehicle(
     @Param('id') id: string,
