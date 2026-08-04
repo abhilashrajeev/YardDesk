@@ -221,7 +221,7 @@ function NewPurchase({
   vehicles: Vehicle[];
   onDone: () => void;
 }) {
-  const [vendorId, setVendorId] = useState(vendors[0]?.id ?? '');
+  const [vendorId, setVendorId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [invoiceNo, setInvoiceNo] = useState('');
   const [vehicleNumber, setVehicleNumber] = useState('');
@@ -283,6 +283,7 @@ function NewPurchase({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    if (!vendorId) return setError('Select a vendor.');
     const items = lines.filter((l) => l.materialId && l.quantity > 0);
     if (!items.length) return setError('Add at least one line with quantity.');
     setSaving(true);

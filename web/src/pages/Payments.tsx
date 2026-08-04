@@ -5,12 +5,14 @@ import { downloadCsv } from '../lib/csv';
 import { useAuth } from '../auth/AuthContext';
 import ExportCsvButton from '../components/ExportCsvButton';
 import Modal from '../components/Modal';
+import CustomerPicker from '../components/CustomerPicker';
+import VendorPicker from '../components/VendorPicker';
 import type { Customer, Vendor, Payment, PaymentMode } from '../types';
 
 export default function Payments() {
   const { data: payments, loading: paymentsLoading, refetch } = useFetch<Payment[]>('/accounts/payments');
-  const { data: customers } = useFetch<Customer[]>('/customers');
-  const { data: vendors } = useFetch<Vendor[]>('/vendors');
+  const { data: customers, setData: setCustomers } = useFetch<Customer[]>('/customers');
+  const { data: vendors, setData: setVendors } = useFetch<Vendor[]>('/vendors');
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const canCreate = user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes('PAYMENTS');
@@ -25,8 +27,6 @@ export default function Payments() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<Payment | null>(null);
-
-  const parties = partyType === 'CUSTOMER' ? customers : vendors;
 
   const [search, setSearch] = useState('');
   const filteredPayments = (payments ?? []).filter((p) => {
@@ -43,15 +43,14 @@ export default function Payments() {
     e.preventDefault();
     setError('');
     setMsg('');
-    const id = partyId || parties?.[0]?.id;
-    if (!id) return setError('Select a party.');
+    if (!partyId) return setError('Select a party.');
     if (amount <= 0) return setError('Enter an amount.');
     setSaving(true);
     try {
       await api.post('/accounts/payments', {
         partyType,
-        customerId: partyType === 'CUSTOMER' ? id : undefined,
-        vendorId: partyType === 'VENDOR' ? id : undefined,
+        customerId: partyType === 'CUSTOMER' ? partyId : undefined,
+        vendorId: partyType === 'VENDOR' ? partyId : undefined,
         direction: partyType === 'CUSTOMER' ? 'IN' : 'OUT',
         mode,
         amount: Number(amount),
@@ -139,11 +138,21 @@ export default function Payments() {
             </div>
             <div>
               <label>{partyType === 'CUSTOMER' ? 'Customer' : 'Vendor'}</label>
-              <select value={partyId} onChange={(e) => setPartyId(e.target.value)}>
-                {parties?.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              {partyType === 'CUSTOMER' ? (
+                <CustomerPicker
+                  customers={customers ?? []}
+                  value={partyId}
+                  onChange={setPartyId}
+                  onCreated={(c) => setCustomers([...(customers ?? []), c])}
+                />
+              ) : (
+                <VendorPicker
+                  vendors={vendors ?? []}
+                  value={partyId}
+                  onChange={setPartyId}
+                  onCreated={(v) => setVendors([...(vendors ?? []), v])}
+                />
+              )}
             </div>
             <div>
               <label>Mode</label>

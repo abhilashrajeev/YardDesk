@@ -226,7 +226,7 @@ function NewSale({
   onCustomerCreated: (c: Customer) => void;
   onDone: () => void;
 }) {
-  const [customerId, setCustomerId] = useState(customers[0]?.id ?? '');
+  const [customerId, setCustomerId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [customerVehicles, setCustomerVehicles] = useState<CustomerVehicle[]>([]);
@@ -290,6 +290,7 @@ function NewSale({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    if (!customerId) return setError('Select a customer.');
     const items = lines.filter((l) => l.materialId && l.quantity > 0);
     if (!items.length) return setError('Add at least one line with quantity.');
     setSaving(true);
