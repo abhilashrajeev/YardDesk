@@ -27,6 +27,17 @@ export default function Payments() {
 
   const parties = partyType === 'CUSTOMER' ? customers : vendors;
 
+  const [search, setSearch] = useState('');
+  const filteredPayments = (payments ?? []).filter((p) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (p.customer?.name ?? p.vendor?.name ?? '').toLowerCase().includes(q) ||
+      p.mode.toLowerCase().includes(q) ||
+      (p.reference ?? '').toLowerCase().includes(q)
+    );
+  });
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -162,7 +173,15 @@ export default function Payments() {
       )}
 
       <div className="panel">
-        <h2>Recent Payments</h2>
+        <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
+          <h2 style={{ margin: 0, padding: 0, border: 0 }}>Recent Payments</h2>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by party, mode, or reference"
+            style={{ maxWidth: 320 }}
+          />
+        </div>
         <div className="body" style={{ padding: 0 }}>
           <table>
             <thead>
@@ -176,7 +195,7 @@ export default function Payments() {
               </tr>
             </thead>
             <tbody>
-              {payments?.map((p) => (
+              {filteredPayments.map((p) => (
                 <tr key={p.id} style={p.voided ? { opacity: 0.5 } : undefined}>
                   <td>{fmtDate(p.date)}</td>
                   <td>{p.customer?.name ?? p.vendor?.name}</td>
@@ -205,6 +224,11 @@ export default function Payments() {
               {payments?.length === 0 && (
                 <tr>
                   <td colSpan={6} className="muted" style={{ padding: 16 }}>No payments yet.</td>
+                </tr>
+              )}
+              {(payments?.length ?? 0) > 0 && filteredPayments.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="muted" style={{ padding: 16 }}>No payments match "{search}".</td>
                 </tr>
               )}
             </tbody>

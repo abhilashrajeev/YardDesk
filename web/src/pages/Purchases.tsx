@@ -52,6 +52,18 @@ export default function Purchases() {
   const active = purchases?.filter((p) => p.status !== 'CANCELLED') ?? [];
   const periodTotal = active.reduce((sum, p) => sum + Number(p.total), 0);
 
+  const [search, setSearch] = useState('');
+  const filteredPurchases = (purchases ?? []).filter((p) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    const normalizedVehicle = (p.vehicle?.number ?? '').replace(/[-\s]/g, '').toLowerCase();
+    return (
+      (p.invoiceNo ?? '').toLowerCase().includes(q) ||
+      (p.vendor?.name ?? '').toLowerCase().includes(q) ||
+      normalizedVehicle.includes(q.replace(/[-\s]/g, ''))
+    );
+  });
+
   async function exportCsv(exportFrom: string, exportTo: string) {
     const { data } = await api.get<Purchase[]>(`/purchases?from=${exportFrom}&to=${exportTo}`);
     downloadCsv(
@@ -113,6 +125,14 @@ export default function Purchases() {
           <span className="muted">{active.length} entr{active.length === 1 ? 'y' : 'ies'}</span>
           <span>Total: <strong>{money(periodTotal)}</strong></span>
         </div>
+        <div style={{ padding: '0 16px 12px' }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by invoice #, vendor, or vehicle number"
+            style={{ width: '100%', maxWidth: 380 }}
+          />
+        </div>
         <div className="body" style={{ padding: 0 }}>
           <table>
             <thead>
@@ -127,7 +147,7 @@ export default function Purchases() {
               </tr>
             </thead>
             <tbody>
-              {purchases?.map((p) => (
+              {filteredPurchases.map((p) => (
                 <tr key={p.id}>
                   <td>{p.invoiceNo ?? '—'}</td>
                   <td>{fmtDate(p.date)}</td>
@@ -164,6 +184,11 @@ export default function Purchases() {
               {purchases?.length === 0 && (
                 <tr>
                   <td colSpan={7} className="muted" style={{ padding: 16 }}>No purchases for this period.</td>
+                </tr>
+              )}
+              {(purchases?.length ?? 0) > 0 && filteredPurchases.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="muted" style={{ padding: 16 }}>No purchases match "{search}".</td>
                 </tr>
               )}
             </tbody>

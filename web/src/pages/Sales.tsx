@@ -52,6 +52,18 @@ export default function Sales() {
   const active = sales?.filter((s) => s.status !== 'CANCELLED') ?? [];
   const periodTotal = active.reduce((sum, s) => sum + Number(s.total), 0);
 
+  const [search, setSearch] = useState('');
+  const filteredSales = (sales ?? []).filter((s) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    const normalizedVehicle = (s.vehicle?.number ?? '').replace(/[-\s]/g, '').toLowerCase();
+    return (
+      (s.billNo ?? '').toLowerCase().includes(q) ||
+      (s.customer?.name ?? '').toLowerCase().includes(q) ||
+      normalizedVehicle.includes(q.replace(/[-\s]/g, ''))
+    );
+  });
+
   async function exportCsv(exportFrom: string, exportTo: string) {
     const { data } = await api.get<Sale[]>(`/sales?from=${exportFrom}&to=${exportTo}`);
     downloadCsv(
@@ -114,6 +126,14 @@ export default function Sales() {
           <span className="muted">{active.length} bill{active.length === 1 ? '' : 's'}</span>
           <span>Total: <strong>{money(periodTotal)}</strong></span>
         </div>
+        <div style={{ padding: '0 16px 12px' }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by bill #, customer, or vehicle number"
+            style={{ width: '100%', maxWidth: 380 }}
+          />
+        </div>
         <div className="body" style={{ padding: 0 }}>
           <table>
             <thead>
@@ -129,7 +149,7 @@ export default function Sales() {
               </tr>
             </thead>
             <tbody>
-              {sales?.map((s) => (
+              {filteredSales.map((s) => (
                 <tr key={s.id}>
                   <td>{s.billNo}</td>
                   <td>{fmtDate(s.date)}</td>
@@ -169,6 +189,11 @@ export default function Sales() {
               {sales?.length === 0 && (
                 <tr>
                   <td colSpan={8} className="muted" style={{ padding: 16 }}>No sales for this period.</td>
+                </tr>
+              )}
+              {(sales?.length ?? 0) > 0 && filteredSales.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="muted" style={{ padding: 16 }}>No sales match "{search}".</td>
                 </tr>
               )}
             </tbody>
