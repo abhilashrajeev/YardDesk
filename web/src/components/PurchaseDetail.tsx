@@ -205,7 +205,7 @@ function EditPurchase({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
+  const subTotal = lines.reduce((s, l) => s + (l.amountOverride ?? l.quantity * l.rate), 0);
   const total = subTotal + Number(freight);
 
   useEffect(() => {
@@ -253,7 +253,13 @@ function EditPurchase({
         date,
         invoiceNo: invoiceNo || undefined,
         freight: Number(freight),
-        items,
+        items: items.map(({ materialId, quantity, rate, unit, amountOverride }) => ({
+          materialId,
+          quantity,
+          rate,
+          unit,
+          amount: amountOverride,
+        })),
       });
       onSaved();
     } catch (err) {

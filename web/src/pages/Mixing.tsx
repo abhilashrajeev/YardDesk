@@ -49,6 +49,10 @@ export default function Mixing() {
   function updateInput(i: number, field: 'materialId' | 'quantity', value: string) {
     setInputs(inputs.map((line, idx) => (idx === i ? { ...line, [field]: field === 'quantity' ? Number(value) : value } : line)));
   }
+  function roundInputQuantity(i: number, value: string) {
+    if (!value) return;
+    setInputs(inputs.map((line, idx) => (idx === i ? { ...line, quantity: Math.round(Number(value)) } : line)));
+  }
   function addInputLine() {
     setInputs([...inputs, { materialId: '', quantity: 0 }]);
   }
@@ -173,7 +177,13 @@ export default function Mixing() {
               </div>
               <div>
                 <label>Quantity produced</label>
-                <input type="number" value={quantity || ''} onChange={(e) => setQuantity(Number(e.target.value))} />
+                <input
+                  type="number"
+                  step="1"
+                  value={quantity || ''}
+                  onChange={(e) => setQuantity(Number(e.target.value))}
+                  onBlur={(e) => e.target.value && setQuantity(Math.round(Number(e.target.value)))}
+                />
               </div>
               <div>
                 <label>Date</label>
@@ -199,9 +209,11 @@ export default function Mixing() {
                 <div>
                   <input
                     type="number"
+                    step="1"
                     placeholder="Quantity consumed"
                     value={line.quantity || ''}
                     onChange={(e) => updateInput(i, 'quantity', e.target.value)}
+                    onBlur={(e) => roundInputQuantity(i, e.target.value)}
                   />
                 </div>
                 <div style={{ flex: '0 0 auto' }}>

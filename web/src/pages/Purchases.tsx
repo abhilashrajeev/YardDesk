@@ -235,7 +235,7 @@ function NewPurchase({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
+  const subTotal = lines.reduce((s, l) => s + (l.amountOverride ?? l.quantity * l.rate), 0);
   const total = subTotal + Number(freight);
 
   // Load this vendor's usual vehicles so the vehicle field can prefill quantity from them.
@@ -296,7 +296,13 @@ function NewPurchase({
         freight: Number(freight),
         paidAmount: paidAmount > 0 ? Number(paidAmount) : undefined,
         paymentMode: paidAmount > 0 ? paymentMode : undefined,
-        items,
+        items: items.map(({ materialId, quantity, rate, unit, amountOverride }) => ({
+          materialId,
+          quantity,
+          rate,
+          unit,
+          amount: amountOverride,
+        })),
       });
       onDone();
     } catch (err) {

@@ -25,6 +25,14 @@ export class SaleItemDto {
   @IsNumber()
   @Min(0)
   rate!: number;
+
+  // Explicit line total, when the client typed it directly rather than deriving it from
+  // quantity*rate — takes precedence, since rate can only be stored to 2 decimal places
+  // and so can't always reproduce an exact typed total for larger quantities.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  amount?: number;
 }
 
 export class CreateSaleDto {

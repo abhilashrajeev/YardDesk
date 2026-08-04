@@ -235,7 +235,7 @@ function EditSale({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
+  const subTotal = lines.reduce((s, l) => s + (l.amountOverride ?? l.quantity * l.rate), 0);
   const total = subTotal + Number(freight) - Number(discount);
 
   useEffect(() => {
@@ -286,7 +286,12 @@ function EditSale({
         paymentMode,
         freight: Number(freight),
         discount: Number(discount),
-        items,
+        items: items.map(({ materialId, quantity, rate, amountOverride }) => ({
+          materialId,
+          quantity,
+          rate,
+          amount: amountOverride,
+        })),
       });
       onSaved();
     } catch (err) {

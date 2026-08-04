@@ -86,7 +86,7 @@ export class SalesService {
       materialId: i.materialId,
       quantity: i.quantity,
       rate: i.rate,
-      amount: round2(i.quantity * i.rate),
+      amount: round2(i.amount ?? i.quantity * i.rate),
     }));
     const subTotal = round2(items.reduce((s, i) => s + i.amount, 0));
     const freight = round2(dto.freight ?? 0);
@@ -345,7 +345,7 @@ export class SalesService {
       materialId: i.materialId,
       quantity: Number(i.quantity),
       rate: Number(i.rate),
-      amount: round2(Number(i.quantity) * Number(i.rate)),
+      amount: round2(('amount' in i && i.amount != null ? Number(i.amount) : undefined) ?? Number(i.quantity) * Number(i.rate)),
     }));
     const subTotal = round2(items.reduce((s, i) => s + i.amount, 0));
     const freight = dto.freight !== undefined ? round2(dto.freight) : Number(existing.freight);

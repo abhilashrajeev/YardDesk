@@ -126,10 +126,11 @@ export default function Inventory() {
                         <div className="flex" style={{ gap: 10, padding: '4px 0' }}>
                           <input
                             type="number"
-                            step="0.001"
+                            step="1"
                             placeholder="e.g. 50 or -10"
                             value={adjustQty}
                             onChange={(e) => setAdjustQty(e.target.value)}
+                            onBlur={(e) => e.target.value && setAdjustQty(String(Math.round(Number(e.target.value))))}
                             style={{ width: 160 }}
                             autoFocus
                           />

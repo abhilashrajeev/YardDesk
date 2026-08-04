@@ -18,9 +18,16 @@ export default function LineItems({ materials, lines, onChange }: Props) {
     next[i] = { ...next[i], ...patch };
     onChange(next);
   }
-  /** Typing an amount directly back-solves the rate for the current quantity, applied
-   *  once typing finishes (blur/Enter) rather than per-keystroke — recalculating the
-   *  rounded rate on every character otherwise makes the field jump around as you type. */
+  function setQuantity(i: number, qtyStr: string) {
+    update(i, { quantity: Math.round(Number(qtyStr)), amountOverride: undefined });
+  }
+  function setRate(i: number, rateStr: string) {
+    update(i, { rate: Number(rateStr), amountOverride: undefined });
+  }
+  /** Typing an amount directly sets it as this line's exact total (also updates the
+   *  Rate field for reference, back-solved for the current quantity) — applied once
+   *  typing finishes (blur/Enter) rather than per-keystroke, since recalculating a
+   *  rounded rate on every character would make the field jump around as you type. */
   function commitAmount(i: number, amountStr: string) {
     setAmountDrafts((d) => {
       const next = { ...d };
@@ -30,7 +37,7 @@ export default function LineItems({ materials, lines, onChange }: Props) {
     const amount = Number(amountStr);
     const qty = lines[i].quantity;
     if (!qty || Number.isNaN(amount)) return;
-    update(i, { rate: round2(amount / qty) });
+    update(i, { amountOverride: round2(amount), rate: round2(amount / qty) });
   }
   function add() {
     onChange([...lines, { materialId: materials[0]?.id ?? '', quantity: 0, rate: Number(materials[0]?.defaultRate ?? 0) }]);
@@ -39,7 +46,8 @@ export default function LineItems({ materials, lines, onChange }: Props) {
     onChange(lines.filter((_, idx) => idx !== i));
   }
 
-  const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
+  const lineAmount = (l: LineInput) => l.amountOverride ?? round2(l.quantity * l.rate);
+  const subTotal = lines.reduce((s, l) => s + lineAmount(l), 0);
 
   return (
     <div>
@@ -53,7 +61,7 @@ export default function LineItems({ materials, lines, onChange }: Props) {
                 value={l.materialId}
                 onChange={(e) => {
                   const newMat = materials.find((m) => m.id === e.target.value);
-                  update(i, { materialId: e.target.value, rate: Number(newMat?.defaultRate ?? 0) });
+                  update(i, { materialId: e.target.value, rate: Number(newMat?.defaultRate ?? 0), amountOverride: undefined });
                 }}
               >
                 {materials.map((m) => (
@@ -71,9 +79,10 @@ export default function LineItems({ materials, lines, onChange }: Props) {
                 <label className="li-field-label">Qty ({mat?.unit ?? 'unit'})</label>
                 <input
                   type="number"
-                  step="0.001"
+                  step="1"
                   value={l.quantity || ''}
                   onChange={(e) => update(i, { quantity: Number(e.target.value) })}
+                  onBlur={(e) => setQuantity(i, e.target.value)}
                   style={{ textAlign: 'right' }}
                 />
               </div>
@@ -83,7 +92,7 @@ export default function LineItems({ materials, lines, onChange }: Props) {
                   type="number"
                   step="0.01"
                   value={l.rate || ''}
-                  onChange={(e) => update(i, { rate: Number(e.target.value) })}
+                  onChange={(e) => setRate(i, e.target.value)}
                   style={{ textAlign: 'right' }}
                 />
               </div>
@@ -92,8 +101,8 @@ export default function LineItems({ materials, lines, onChange }: Props) {
                 <input
                   type="number"
                   step="0.01"
-                  value={amountDrafts[i] ?? (round2(l.quantity * l.rate) || '')}
-                  title={l.quantity ? 'Type an amount to back-solve the rate' : 'Enter a quantity first'}
+                  value={amountDrafts[i] ?? (lineAmount(l) || '')}
+                  title={l.quantity ? 'Type an amount to set this line\'s exact total' : 'Enter a quantity first'}
                   onChange={(e) => setAmountDrafts((d) => ({ ...d, [i]: e.target.value }))}
                   onBlur={(e) => commitAmount(i, e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}

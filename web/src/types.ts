@@ -134,6 +134,10 @@ export interface LineInput {
   // Unit this line is transacted in — only meaningful for purchases (sales
   // always transact in the material's own unit).
   unit?: Unit;
+  // Explicit line total, when typed directly into Amount rather than derived
+  // from quantity*rate — takes precedence over that product when present.
+  // Cleared whenever quantity, rate, material, or unit changes directly.
+  amountOverride?: number;
 }
 
 export interface LineItem extends LineInput {

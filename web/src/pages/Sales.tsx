@@ -240,7 +240,7 @@ function NewSale({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
+  const subTotal = lines.reduce((s, l) => s + (l.amountOverride ?? l.quantity * l.rate), 0);
   const total = subTotal + Number(freight) - Number(discount);
 
   // Load this customer's usual vehicles so the vehicle field can prefill quantity from them.
@@ -303,7 +303,12 @@ function NewSale({
         freight: Number(freight),
         discount: Number(discount),
         paidAmount: paymentMode === 'CREDIT' ? Number(paidAmount) : undefined,
-        items,
+        items: items.map(({ materialId, quantity, rate, amountOverride }) => ({
+          materialId,
+          quantity,
+          rate,
+          amount: amountOverride,
+        })),
       });
       onDone();
     } catch (err) {
