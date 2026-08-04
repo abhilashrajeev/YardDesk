@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Material, LineInput } from '../types';
 import { money, round2 } from '../lib/hooks';
 
@@ -8,13 +9,24 @@ interface Props {
 }
 
 export default function LineItems({ materials, lines, onChange }: Props) {
+  // Raw text of an in-progress Amount edit, keyed by line index — kept separate from the
+  // derived qty*rate value so recalculating the rate mid-keystroke doesn't fight typing.
+  const [amountDrafts, setAmountDrafts] = useState<Record<number, string>>({});
+
   function update(i: number, patch: Partial<LineInput>) {
     const next = lines.slice();
     next[i] = { ...next[i], ...patch };
     onChange(next);
   }
-  /** Typing an amount directly back-solves the rate for the current quantity. */
-  function setAmount(i: number, amountStr: string) {
+  /** Typing an amount directly back-solves the rate for the current quantity, applied
+   *  once typing finishes (blur/Enter) rather than per-keystroke — recalculating the
+   *  rounded rate on every character otherwise makes the field jump around as you type. */
+  function commitAmount(i: number, amountStr: string) {
+    setAmountDrafts((d) => {
+      const next = { ...d };
+      delete next[i];
+      return next;
+    });
     const amount = Number(amountStr);
     const qty = lines[i].quantity;
     if (!qty || Number.isNaN(amount)) return;
@@ -80,9 +92,11 @@ export default function LineItems({ materials, lines, onChange }: Props) {
                 <input
                   type="number"
                   step="0.01"
-                  value={round2(l.quantity * l.rate) || ''}
+                  value={amountDrafts[i] ?? (round2(l.quantity * l.rate) || '')}
                   title={l.quantity ? 'Type an amount to back-solve the rate' : 'Enter a quantity first'}
-                  onChange={(e) => setAmount(i, e.target.value)}
+                  onChange={(e) => setAmountDrafts((d) => ({ ...d, [i]: e.target.value }))}
+                  onBlur={(e) => commitAmount(i, e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
                   style={{ textAlign: 'right' }}
                 />
               </div>
