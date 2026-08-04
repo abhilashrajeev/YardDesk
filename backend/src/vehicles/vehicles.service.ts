@@ -41,7 +41,9 @@ export class VehiclesService {
   findAll() {
     return this.prisma.vehicle.findMany({
       where: { isActive: true },
-      orderBy: { number: 'asc' },
+      // Most recently added first — easier to find what you just entered than
+      // scanning an alphabetical list.
+      orderBy: { createdAt: 'desc' },
       include: {
         customerVehicles: { include: { customer: { select: { id: true, name: true } } } },
         vendorVehicles: { include: { vendor: { select: { id: true, name: true } } } },

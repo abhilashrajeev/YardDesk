@@ -243,7 +243,8 @@ export class SalesService {
             }
           : {}),
       },
-      orderBy: { date: 'desc' },
+      // Newest date first; same-day entries fall back to most-recently-entered.
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       take: params.limit ?? 100,
       include: {
         customer: { select: { name: true } },
