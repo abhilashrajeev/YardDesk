@@ -4,6 +4,7 @@ import { useFetch, money, fmtDate } from '../lib/hooks';
 import { downloadCsv } from '../lib/csv';
 import { useAuth } from '../auth/AuthContext';
 import ExportCsvButton from '../components/ExportCsvButton';
+import Modal from '../components/Modal';
 import type { Customer, Vendor, Payment, PaymentMode } from '../types';
 
 export default function Payments() {
@@ -237,43 +238,40 @@ export default function Payments() {
       </div>
 
       {editing && (
-        <div className="panel" style={{ marginTop: 16 }}>
-          <h2>Edit Payment</h2>
-          <div className="body">
-            <div className="row">
-              <div>
-                <label>Mode</label>
-                <select value={editing.mode} onChange={(e) => setEditing({ ...editing, mode: e.target.value as PaymentMode })}>
-                  <option value="CASH">Cash</option>
-                  <option value="UPI">UPI</option>
-                  <option value="BANK">Bank</option>
-                </select>
-              </div>
-              <div>
-                <label>Amount</label>
-                <input type="number" value={Number(editing.amount) || ''} onChange={(e) => setEditing({ ...editing, amount: e.target.value })} />
-              </div>
-              <div>
-                <label>Reference</label>
-                <input value={editing.reference ?? ''} onChange={(e) => setEditing({ ...editing, reference: e.target.value })} />
-              </div>
-              <div>
-                <label>Date</label>
-                <input
-                  type="date"
-                  value={editing.date.slice(0, 10)}
-                  onChange={(e) => setEditing({ ...editing, date: e.target.value })}
-                  max={new Date().toISOString().slice(0, 10)}
-                />
-              </div>
+        <Modal title="Edit Payment" onClose={() => setEditing(null)}>
+          <div className="row">
+            <div>
+              <label>Mode</label>
+              <select value={editing.mode} onChange={(e) => setEditing({ ...editing, mode: e.target.value as PaymentMode })}>
+                <option value="CASH">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="BANK">Bank</option>
+              </select>
             </div>
-            {error && <div className="err">{error}</div>}
-            <div className="between" style={{ marginTop: 10 }}>
-              <button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
-              <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
+            <div>
+              <label>Amount</label>
+              <input type="number" value={Number(editing.amount) || ''} onChange={(e) => setEditing({ ...editing, amount: e.target.value })} />
+            </div>
+            <div>
+              <label>Reference</label>
+              <input value={editing.reference ?? ''} onChange={(e) => setEditing({ ...editing, reference: e.target.value })} />
+            </div>
+            <div>
+              <label>Date</label>
+              <input
+                type="date"
+                value={editing.date.slice(0, 10)}
+                onChange={(e) => setEditing({ ...editing, date: e.target.value })}
+                max={new Date().toISOString().slice(0, 10)}
+              />
             </div>
           </div>
-        </div>
+          {error && <div className="err">{error}</div>}
+          <div className="between" style={{ marginTop: 10 }}>
+            <button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
+            <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </Modal>
       )}
     </>
   );

@@ -5,6 +5,7 @@ import { downloadCsv } from '../lib/csv';
 import ExportCsvButton from '../components/ExportCsvButton';
 import { useAuth } from '../auth/AuthContext';
 import VehicleNumberInput from '../components/VehicleNumberInput';
+import Modal from '../components/Modal';
 import type { Vendor, VendorVehicle } from '../types';
 
 interface LedgerEntry {
@@ -226,34 +227,31 @@ export default function Vendors() {
       </div>
 
       {editing && (
-        <div className="panel" style={{ marginTop: 16 }}>
-          <h2>Edit Vendor</h2>
-          <div className="body">
-            <div className="row">
-              <div>
-                <label>Name</label>
-                <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-              </div>
-              <div>
-                <label>Phone</label>
-                <input value={editing.phone ?? ''} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} />
-              </div>
-              <div>
-                <label>Opening balance</label>
-                <input
-                  type="number"
-                  value={Number(editing.openingBalance) || ''}
-                  onChange={(e) => setEditing({ ...editing, openingBalance: e.target.value })}
-                />
-              </div>
+        <Modal title="Edit Vendor" onClose={() => setEditing(null)}>
+          <div className="row">
+            <div>
+              <label>Name</label>
+              <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
             </div>
-            {error && <div className="err">{error}</div>}
-            <div className="between" style={{ marginTop: 10 }}>
-              <button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
-              <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
+            <div>
+              <label>Phone</label>
+              <input value={editing.phone ?? ''} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} />
+            </div>
+            <div>
+              <label>Opening balance</label>
+              <input
+                type="number"
+                value={Number(editing.openingBalance) || ''}
+                onChange={(e) => setEditing({ ...editing, openingBalance: e.target.value })}
+              />
             </div>
           </div>
-        </div>
+          {error && <div className="err">{error}</div>}
+          <div className="between" style={{ marginTop: 10 }}>
+            <button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
+            <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </Modal>
       )}
 
       {ledgerFor && (

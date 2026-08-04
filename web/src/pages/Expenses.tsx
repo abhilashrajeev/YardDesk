@@ -4,6 +4,7 @@ import { useFetch, money, fmtDate } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
 import PeriodFilter, { defaultPeriodState, periodRange, periodLabel } from '../components/PeriodFilter';
 import CategoryPicker from '../components/CategoryPicker';
+import Modal from '../components/Modal';
 import type { Expense, PaymentMode } from '../types';
 
 const DEFAULT_CATEGORIES = ['Fuel', 'Salary', 'Maintenance', 'Rent', 'Loading/Unloading', 'Misc'];
@@ -222,55 +223,52 @@ export default function Expenses() {
       </div>
 
       {editing && (
-        <div className="panel" style={{ marginTop: 16 }}>
-          <h2>Edit Expense</h2>
-          <div className="body">
-            <div className="row">
-              <div>
-                <label>Category</label>
-                <CategoryPicker
-                  categories={knownCategories}
-                  value={editing.category}
-                  onChange={(c) => setEditing({ ...editing, category: c })}
-                  onCreated={handleCategoryCreated}
-                  onRenamed={handleCategoryRenamed}
-                  onRemoved={handleCategoryRemoved}
-                  canManage={isAdmin}
-                />
-              </div>
-              <div>
-                <label>Description</label>
-                <input value={editing.description ?? ''} onChange={(e) => setEditing({ ...editing, description: e.target.value })} />
-              </div>
-              <div>
-                <label>Amount</label>
-                <input type="number" value={Number(editing.amount) || ''} onChange={(e) => setEditing({ ...editing, amount: e.target.value })} />
-              </div>
-              <div>
-                <label>Paid via</label>
-                <select value={editing.mode} onChange={(e) => setEditing({ ...editing, mode: e.target.value as PaymentMode })}>
-                  <option value="CASH">Cash</option>
-                  <option value="UPI">UPI</option>
-                  <option value="BANK">Bank</option>
-                </select>
-              </div>
-              <div>
-                <label>Date</label>
-                <input
-                  type="date"
-                  value={editing.date.slice(0, 10)}
-                  onChange={(e) => setEditing({ ...editing, date: e.target.value })}
-                  max={new Date().toISOString().slice(0, 10)}
-                />
-              </div>
+        <Modal title="Edit Expense" onClose={() => setEditing(null)}>
+          <div className="row">
+            <div>
+              <label>Category</label>
+              <CategoryPicker
+                categories={knownCategories}
+                value={editing.category}
+                onChange={(c) => setEditing({ ...editing, category: c })}
+                onCreated={handleCategoryCreated}
+                onRenamed={handleCategoryRenamed}
+                onRemoved={handleCategoryRemoved}
+                canManage={isAdmin}
+              />
             </div>
-            {error && <div className="err">{error}</div>}
-            <div className="between" style={{ marginTop: 10 }}>
-              <button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
-              <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
+            <div>
+              <label>Description</label>
+              <input value={editing.description ?? ''} onChange={(e) => setEditing({ ...editing, description: e.target.value })} />
+            </div>
+            <div>
+              <label>Amount</label>
+              <input type="number" value={Number(editing.amount) || ''} onChange={(e) => setEditing({ ...editing, amount: e.target.value })} />
+            </div>
+            <div>
+              <label>Paid via</label>
+              <select value={editing.mode} onChange={(e) => setEditing({ ...editing, mode: e.target.value as PaymentMode })}>
+                <option value="CASH">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="BANK">Bank</option>
+              </select>
+            </div>
+            <div>
+              <label>Date</label>
+              <input
+                type="date"
+                value={editing.date.slice(0, 10)}
+                onChange={(e) => setEditing({ ...editing, date: e.target.value })}
+                max={new Date().toISOString().slice(0, 10)}
+              />
             </div>
           </div>
-        </div>
+          {error && <div className="err">{error}</div>}
+          <div className="between" style={{ marginTop: 10 }}>
+            <button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
+            <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </Modal>
       )}
     </>
   );

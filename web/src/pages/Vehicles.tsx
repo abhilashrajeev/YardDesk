@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import VehicleNumberInput from '../components/VehicleNumberInput';
 import CustomerPicker from '../components/CustomerPicker';
 import VendorPicker from '../components/VendorPicker';
+import Modal from '../components/Modal';
 import type { Vehicle, Customer, Vendor } from '../types';
 
 /** Capacity registered against this truck by a customer/vendor takes priority over the
@@ -324,34 +325,31 @@ export default function Vehicles() {
       </div>
 
       {editing && (
-        <div className="panel" style={{ marginTop: 16 }}>
-          <h2>Edit Vehicle</h2>
-          <div className="body">
-            <div className="row">
-              <div>
-                <label>Vehicle number</label>
-                <VehicleNumberInput value={editing.number} onChange={(v) => setEditing({ ...editing, number: v })} />
-              </div>
-              <div>
-                <label>Owner name</label>
-                <input value={editing.ownerName ?? ''} onChange={(e) => setEditing({ ...editing, ownerName: e.target.value })} />
-              </div>
-              <div>
-                <label>Capacity (cft)</label>
-                <input type="number" value={editCapacity} onChange={(e) => setEditCapacity(e.target.value)} />
-              </div>
-              <div>
-                <label>Extra body capacity (cft, optional)</label>
-                <input type="number" value={editExtraBody} onChange={(e) => setEditExtraBody(e.target.value)} />
-              </div>
+        <Modal title="Edit Vehicle" onClose={() => setEditing(null)}>
+          <div className="row">
+            <div>
+              <label>Vehicle number</label>
+              <VehicleNumberInput value={editing.number} onChange={(v) => setEditing({ ...editing, number: v })} />
             </div>
-            {error && <div className="err">{error}</div>}
-            <div className="between" style={{ marginTop: 10 }}>
-              <button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
-              <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
+            <div>
+              <label>Owner name</label>
+              <input value={editing.ownerName ?? ''} onChange={(e) => setEditing({ ...editing, ownerName: e.target.value })} />
+            </div>
+            <div>
+              <label>Capacity (cft)</label>
+              <input type="number" value={editCapacity} onChange={(e) => setEditCapacity(e.target.value)} />
+            </div>
+            <div>
+              <label>Extra body capacity (cft, optional)</label>
+              <input type="number" value={editExtraBody} onChange={(e) => setEditExtraBody(e.target.value)} />
             </div>
           </div>
-        </div>
+          {error && <div className="err">{error}</div>}
+          <div className="between" style={{ marginTop: 10 }}>
+            <button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
+            <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </Modal>
       )}
     </>
   );

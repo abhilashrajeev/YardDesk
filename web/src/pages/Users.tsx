@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, apiError } from '../api/client';
 import { useFetch, fmtDate, titleCase } from '../lib/hooks';
 import { ALL_PERMISSIONS, permissionLabel } from '../types';
+import Modal from '../components/Modal';
 import type { StaffUser, Permission, Role } from '../types';
 
 function PermissionPicker({
@@ -197,40 +198,37 @@ export default function Users() {
       </div>
 
       {editing && (
-        <div className="panel" style={{ marginTop: 16 }}>
-          <h2>Edit {editing.name}</h2>
-          <div className="body">
-            <div className="row">
-              <div>
-                <label>Name</label>
-                <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-              </div>
-              <div>
-                <label>Role</label>
-                <select value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value as Role })}>
-                  <option value="ADMIN">Admin</option>
-                  <option value="EMPLOYEE">Employee</option>
-                </select>
-              </div>
-              <div>
-                <label>Reset password (optional)</label>
-                <input type="password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="leave blank to keep current" />
-              </div>
+        <Modal title={`Edit ${editing.name}`} onClose={() => setEditing(null)}>
+          <div className="row">
+            <div>
+              <label>Name</label>
+              <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
             </div>
-            <div style={{ marginBottom: 12 }}>
-              <label>Can create records in</label>
-              <PermissionPicker
-                value={editing.permissions}
-                onChange={(next) => setEditing({ ...editing, permissions: next })}
-              />
+            <div>
+              <label>Role</label>
+              <select value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value as Role })}>
+                <option value="ADMIN">Admin</option>
+                <option value="EMPLOYEE">Employee</option>
+              </select>
             </div>
-            {error && <div className="err">{error}</div>}
-            <div className="between" style={{ marginTop: 10 }}>
-              <button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
-              <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
+            <div>
+              <label>Reset password (optional)</label>
+              <input type="password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="leave blank to keep current" />
             </div>
           </div>
-        </div>
+          <div style={{ marginBottom: 12 }}>
+            <label>Can create records in</label>
+            <PermissionPicker
+              value={editing.permissions}
+              onChange={(next) => setEditing({ ...editing, permissions: next })}
+            />
+          </div>
+          {error && <div className="err">{error}</div>}
+          <div className="between" style={{ marginTop: 10 }}>
+            <button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
+            <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </Modal>
       )}
     </>
   );
