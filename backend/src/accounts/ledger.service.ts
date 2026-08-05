@@ -78,7 +78,7 @@ export class LedgerService {
   async getLedger(partyType: PartyType, id: string) {
     const where =
       partyType === PartyType.CUSTOMER ? { customerId: id } : { vendorId: id };
-    const [entries, balance] = await Promise.all([
+    const [entries, balance, party] = await Promise.all([
       this.prisma.ledgerEntry.findMany({ where, orderBy: { createdAt: 'asc' } }),
       this.currentBalance(
         this.prisma,
@@ -86,8 +86,17 @@ export class LedgerService {
         partyType === PartyType.CUSTOMER ? id : undefined,
         partyType === PartyType.VENDOR ? id : undefined,
       ),
+      partyType === PartyType.CUSTOMER
+        ? this.prisma.customer.findUnique({ where: { id } })
+        : this.prisma.vendor.findUnique({ where: { id } }),
     ]);
-    return { balance, entries };
+    return {
+      balance,
+      entries,
+      name: party?.name ?? '',
+      phone: party?.phone ?? null,
+      openingBalance: party ? Number(party.openingBalance) : 0,
+    };
   }
 
   /** Parties with outstanding balance (> 0). Single query per side instead of one-per-party. */

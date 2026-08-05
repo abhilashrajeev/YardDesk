@@ -14,6 +14,7 @@ const TITLES: Record<string, string> = {
   '/purchases': 'Purchases',
   '/payments': 'Payments',
   '/outstanding': 'Outstanding & Pending',
+  '/ledger': 'Ledger',
   '/inventory': 'Stock Monitoring',
   '/mixing': 'Mixing',
   '/customers': 'Customers',
@@ -63,6 +64,7 @@ export default function Layout() {
     ...(can('PURCHASES') ? [{ path: '/purchases', label: TITLES['/purchases'] }] : []),
     ...(can('PAYMENTS') ? [{ path: '/payments', label: TITLES['/payments'] }] : []),
     { path: '/outstanding', label: TITLES['/outstanding'] },
+    { path: '/ledger', label: TITLES['/ledger'] },
     ...(can('STOCK') ? [{ path: '/inventory', label: TITLES['/inventory'] }] : []),
     ...(can('STOCK') ? [{ path: '/mixing', label: TITLES['/mixing'] }] : []),
     ...(can('EXPENSES') ? [{ path: '/expenses', label: TITLES['/expenses'] }] : []),
@@ -141,6 +143,9 @@ export default function Layout() {
           </NavLink>
           <NavLink to="/vendors" className={link}>
             <Icon name="briefcase" size={18} /> Vendors
+          </NavLink>
+          <NavLink to="/ledger" className={link}>
+            <Icon name="book" size={18} /> Ledger
           </NavLink>
           <NavLink to="/vehicles" className={link}>
             <Icon name="truck" size={18} /> Vehicles

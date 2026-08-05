@@ -1,23 +1,14 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, apiError } from '../api/client';
-import { useFetch, money, fmtDate } from '../lib/hooks';
-import { downloadCsv } from '../lib/csv';
-import ExportCsvButton from '../components/ExportCsvButton';
+import { useFetch } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
 import VehicleNumberInput from '../components/VehicleNumberInput';
 import Modal from '../components/Modal';
 import type { Vendor, VendorVehicle } from '../types';
 
-interface LedgerEntry {
-  id: string;
-  date: string;
-  description: string;
-  debit: string;
-  credit: string;
-  balance: string;
-}
-
 export default function Vendors() {
+  const navigate = useNavigate();
   const { data: vendors, loading: vendorsLoading, refetch } = useFetch<Vendor[]>('/vendors');
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
@@ -32,12 +23,8 @@ export default function Vendors() {
     if (!q) return true;
     return v.name.toLowerCase().includes(q) || (v.phone ?? '').includes(q);
   });
-  const [ledgerFor, setLedgerFor] = useState<Vendor | null>(null);
   const [editing, setEditing] = useState<Vendor | null>(null);
   const [saving, setSaving] = useState(false);
-  const { data: ledger } = useFetch<{ balance: number; entries: LedgerEntry[] }>(
-    ledgerFor ? `/accounts/vendors/${ledgerFor.id}/ledger` : null,
-  );
 
   const [vehiclesFor, setVehiclesFor] = useState<Vendor | null>(null);
   const { data: vendorVehicles, refetch: refetchVendorVehicles } = useFetch<VendorVehicle[]>(
@@ -196,7 +183,7 @@ export default function Vendors() {
                   <td className="muted">{v.phone ?? '—'}</td>
                   <td className="right">
                     <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
-                      <button className="btn sm ghost" onClick={() => setLedgerFor(v)}>Ledger</button>
+                      <button className="btn sm ghost" onClick={() => navigate(`/ledger?type=VENDOR&id=${v.id}`)}>Ledger</button>
                       <button className="btn sm ghost" onClick={() => setVehiclesFor(v)}>Vehicles</button>
                       <button className="btn sm ghost" onClick={() => setEditing(v)}>Edit</button>
                       {isAdmin && (
@@ -252,62 +239,6 @@ export default function Vendors() {
             <button type="button" className="btn" disabled={saving} onClick={saveEdit}>{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </Modal>
-      )}
-
-      {ledgerFor && (
-        <div className="panel">
-          <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
-            <strong>{ledgerFor.name} — Ledger</strong>
-            <div className="flex" style={{ gap: 12, alignItems: 'center' }}>
-              <span>
-                We owe:{' '}
-                <strong style={{ color: (ledger?.balance ?? 0) > 0 ? 'var(--red)' : 'var(--green)' }}>
-                  {money(ledger?.balance)}
-                </strong>
-              </span>
-              <ExportCsvButton
-                disabled={!ledger?.entries.length}
-                onExport={(exportFrom, exportTo) =>
-                  downloadCsv(
-                    `${ledgerFor.name}-ledger-${exportFrom}-${exportTo}`,
-                    [
-                      { header: 'Date', value: (e: LedgerEntry) => fmtDate(e.date) },
-                      { header: 'Description', value: (e: LedgerEntry) => e.description },
-                      { header: 'Debit', value: (e: LedgerEntry) => e.debit },
-                      { header: 'Credit', value: (e: LedgerEntry) => e.credit },
-                      { header: 'Balance', value: (e: LedgerEntry) => e.balance },
-                    ],
-                    (ledger?.entries ?? []).filter((e) => e.date.slice(0, 10) >= exportFrom && e.date.slice(0, 10) <= exportTo),
-                  )
-                }
-              />
-            </div>
-          </div>
-          <div className="body" style={{ padding: 0 }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Description</th>
-                  <th className="num">Debit</th>
-                  <th className="num">Credit</th>
-                  <th className="num">Balance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ledger?.entries.map((e) => (
-                  <tr key={e.id}>
-                    <td>{fmtDate(e.date)}</td>
-                    <td>{e.description}</td>
-                    <td className="num">{Number(e.debit) ? money(e.debit) : '—'}</td>
-                    <td className="num">{Number(e.credit) ? money(e.credit) : '—'}</td>
-                    <td className="num">{money(e.balance)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
       )}
 
       {vehiclesFor && (

@@ -442,3 +442,12 @@ input[type='date'] { -webkit-appearance: none; appearance: none; text-align: lef
   .between > .flex { flex-wrap: wrap; }
 }
 
+.print-only { display: none; }
+@media print {
+  .sidebar, .topbar, .no-print { display: none !important; }
+  .print-only { display: inline; }
+  .main { margin: 0 !important; }
+  .content { padding: 0 !important; }
+  body { background: #fff !important; }
+}
+

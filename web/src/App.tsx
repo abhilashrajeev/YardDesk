@@ -7,6 +7,7 @@ import Sales from './pages/Sales';
 import Purchases from './pages/Purchases';
 import Payments from './pages/Payments';
 import Outstanding from './pages/Outstanding';
+import Ledger from './pages/Ledger';
 import Inventory from './pages/Inventory';
 import Mixing from './pages/Mixing';
 import Customers from './pages/Customers';
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="purchases" element={<Purchases />} />
         <Route path="payments" element={<Payments />} />
         <Route path="outstanding" element={<Outstanding />} />
+        <Route path="ledger" element={<Ledger />} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="mixing" element={<Mixing />} />
         <Route path="customers" element={<Customers />} />

@@ -34,7 +34,8 @@ type IconName =
   | 'lock'
   | 'eye-off'
   | 'shield'
-  | 'blend';
+  | 'blend'
+  | 'book';
 
 const paths: Record<IconName, JSX.Element> = {
   grid: (
@@ -234,6 +235,12 @@ const paths: Record<IconName, JSX.Element> = {
     <>
       <circle cx="9" cy="9" r="7" />
       <circle cx="15" cy="15" r="7" />
+    </>
+  ),
+  book: (
+    <>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
     </>
   ),
 };
