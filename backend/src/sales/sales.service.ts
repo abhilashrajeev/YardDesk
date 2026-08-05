@@ -246,10 +246,11 @@ export class SalesService {
       // Newest date first; same-day entries fall back to most-recently-entered.
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       take: params.limit ?? 100,
+      // No `items` here — the list view never renders line items, and each extra
+      // relation is its own network round-trip to Neon, which dominates latency.
       include: {
         customer: { select: { name: true } },
         vehicle: { select: { number: true } },
-        items: true,
         payments: { select: { amount: true, direction: true, voided: true } },
       },
     });
