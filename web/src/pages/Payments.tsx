@@ -7,10 +7,14 @@ import ExportCsvButton from '../components/ExportCsvButton';
 import Modal from '../components/Modal';
 import CustomerPicker from '../components/CustomerPicker';
 import VendorPicker from '../components/VendorPicker';
+import PeriodFilter, { defaultPeriodState, periodRange, periodLabel } from '../components/PeriodFilter';
 import type { Customer, Vendor, Payment, PaymentMode } from '../types';
 
 export default function Payments() {
-  const { data: payments, loading: paymentsLoading, refetch } = useFetch<Payment[]>('/accounts/payments');
+  const [period, setPeriod] = useState(defaultPeriodState());
+  const { from, to } = periodRange(period);
+  const paymentsUrl = from ? `/accounts/payments?from=${from}&to=${to}` : '/accounts/payments';
+  const { data: payments, loading: paymentsLoading, refetch } = useFetch<Payment[]>(paymentsUrl);
   const { data: customers, setData: setCustomers } = useFetch<Customer[]>('/customers');
   const { data: vendors, setData: setVendors } = useFetch<Vendor[]>('/vendors');
   const { user } = useAuth();
@@ -122,7 +126,7 @@ export default function Payments() {
     <>
       <div className="between" style={{ marginTop: 0, marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>Payments</h2>
-        <ExportCsvButton onExport={exportCsv} />
+        <ExportCsvButton onExport={exportCsv} defaultFrom={from || undefined} defaultTo={to || undefined} />
       </div>
       {canCreate && (
       <form className="panel" onSubmit={submit}>
@@ -184,12 +188,15 @@ export default function Payments() {
 
       <div className="panel">
         <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
-          <h2 style={{ margin: 0, padding: 0, border: 0 }}>Recent Payments</h2>
+          <h2 style={{ margin: 0, padding: 0, border: 0 }}>Payments — {periodLabel(period)}</h2>
+          <PeriodFilter value={period} onChange={setPeriod} allowRecent />
+        </div>
+        <div style={{ padding: '10px 16px 12px' }}>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by party, mode, or reference"
-            style={{ maxWidth: 320 }}
+            style={{ width: '100%', maxWidth: 380 }}
           />
         </div>
         <div className="body" style={{ padding: 0 }}>

@@ -185,7 +185,9 @@ export class PaymentsService {
           : {}),
       },
       orderBy: { date: 'desc' },
-      take: params.limit ?? 100,
+      // Only cap the unscoped view (no date range) — capping a date-scoped query too
+      // would silently under-report that period, same issue fixed on Sales/Purchases.
+      take: params.from || params.to ? undefined : (params.limit ?? 100),
       include: {
         customer: { select: { name: true } },
         vendor: { select: { name: true } },
