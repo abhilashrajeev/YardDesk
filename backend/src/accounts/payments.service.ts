@@ -84,7 +84,10 @@ export class PaymentsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const outstanding = await this.getOutstandingInvoices(tx, dto);
+      // autoApply: false records one lump payment against the party's overall balance —
+      // not split across bills — e.g. for a customer/vendor who just wants "I paid X
+      // today" reflected without picking which specific invoices it covers.
+      const outstanding = dto.autoApply === false ? [] : await this.getOutstandingInvoices(tx, dto);
 
       // Each entry is one resulting Payment row: `undefined` invoiceId means
       // it's the unlinked leftover (an advance) rather than applied to a bill.

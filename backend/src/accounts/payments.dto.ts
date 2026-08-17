@@ -7,6 +7,7 @@ import {
   IsEnum,
   ValidateIf,
   IsDateString,
+  IsBoolean,
 } from 'class-validator';
 import { PartyType, PaymentDirection, PaymentMode } from '@prisma/client';
 
@@ -49,6 +50,13 @@ export class CreatePaymentDto {
   @IsOptional()
   @IsDateString()
   date?: string;
+
+  // Default true: FIFO-split the payment across the party's oldest open bills first
+  // (may produce several linked Payment rows). Set false to record it as one lump
+  // payment against the party's overall balance, not tied to any specific bill.
+  @IsOptional()
+  @IsBoolean()
+  autoApply?: boolean;
 }
 
 export class UpdatePaymentDto {

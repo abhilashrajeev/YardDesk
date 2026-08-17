@@ -27,6 +27,10 @@ export default function Payments() {
   const [amount, setAmount] = useState(0);
   const [reference, setReference] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  // Default: FIFO-apply the payment across the party's oldest open bills (may create
+  // several linked payment rows). Off: one lump payment against the total outstanding,
+  // not tied to any specific bill — for "just record what they paid" without allocating it.
+  const [autoApply, setAutoApply] = useState(true);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -60,6 +64,7 @@ export default function Payments() {
         amount: Number(amount),
         reference: reference || undefined,
         date,
+        autoApply,
       });
       setMsg('Payment recorded.');
       setPartyId('');
@@ -67,6 +72,7 @@ export default function Payments() {
       setAmount(0);
       setReference('');
       setDate(new Date().toISOString().slice(0, 10));
+      setAutoApply(true);
       refetch();
     } catch (err) {
       setError(apiError(err));
@@ -177,6 +183,12 @@ export default function Payments() {
             <div>
               <label>Date</label>
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, paddingBottom: 9 }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={autoApply} onChange={(e) => setAutoApply(e.target.checked)} />
+              <label style={{ margin: 0 }} title="On: split across the oldest open bills first (may create several linked payments). Off: one lump payment against the total outstanding, not tied to a specific bill.">
+                Apply to outstanding bills
+              </label>
             </div>
           </div>
           {error && !editing && <div className="err">{error}</div>}
