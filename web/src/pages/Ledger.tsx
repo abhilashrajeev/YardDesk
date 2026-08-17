@@ -131,7 +131,7 @@ export default function Ledger() {
         </div>
       </div>
 
-      <div className="panel no-print">
+      <div className="panel no-print picker-panel">
         <div className="body">
           <div className="row">
             <div>

@@ -201,8 +201,9 @@ h1, h2, h3 { letter-spacing: -0.01em; }
    "visible" to "auto"), clipping/scrolling dropdowns like CustomerPicker/VendorPicker/CategoryPicker. */
 .panel .body:has(> table) { overflow-x: auto; }
 /* Input/create forms never contain tables — let their picker dropdowns overflow the panel
-   instead of being clipped by its rounded-corner overflow:hidden. */
-form.panel { overflow: visible; }
+   instead of being clipped by its rounded-corner overflow:hidden. Same deal for the
+   Ledger's party-picker panel, which isn't a <form> but has the same shape. */
+form.panel, .panel.picker-panel { overflow: visible; }
 
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); }
