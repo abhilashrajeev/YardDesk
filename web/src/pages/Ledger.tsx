@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useFetch, money, fmtDate } from '../lib/hooks';
 import { downloadCsv } from '../lib/csv';
+import { downloadLedgerPdf } from '../lib/ledgerPdf';
 import { Icon } from '../components/Icon';
 import ExportCsvButton from '../components/ExportCsvButton';
 import PeriodFilter, { defaultPeriodState, periodRange, periodLabel } from '../components/PeriodFilter';
@@ -122,6 +123,34 @@ export default function Ledger() {
     );
   }
 
+  // A nicer "01 Aug 2026 - 14 Aug 2026" style range when one's active, matching the
+  // format of the statement PDFs vendors/customers are already used to seeing.
+  const pdfPeriodLabel = from && to ? `${fmtDate(from)} - ${fmtDate(to)}` : periodLabel(period);
+  const openingDateLabel = from ? fmtDate(from) : filtered.length ? fmtDate(filtered[0].date) : 'account opening';
+
+  function downloadPdf() {
+    if (!ledger) return;
+    downloadLedgerPdf({
+      partyName: ledger.name,
+      partyPhone: ledger.phone,
+      positiveMeansTheyOweUs: partyType === 'CUSTOMER',
+      periodLabel: pdfPeriodLabel,
+      openingBalance: openingForRange,
+      openingDateLabel,
+      entries: filtered.map((e) => ({
+        date: e.date,
+        voucher: voucherLabel(e.refType),
+        description: e.description,
+        debit: Number(e.debit),
+        credit: Number(e.credit),
+        balance: Number(e.balance),
+      })),
+      totalDebit,
+      totalCredit,
+      closingBalance,
+    });
+  }
+
   return (
     <>
       <div className="page-head">
@@ -223,6 +252,7 @@ export default function Ledger() {
               <div className="flex" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <PeriodFilter value={period} onChange={setPeriod} allowRecent />
                 <button type="button" className="btn ghost sm" onClick={() => window.print()}>Print</button>
+                <button type="button" className="btn ghost sm" disabled={!filtered.length} onClick={downloadPdf}>Download PDF</button>
                 <ExportCsvButton disabled={!filtered.length} onExport={exportCsv} label="Export CSV" />
               </div>
             </div>
