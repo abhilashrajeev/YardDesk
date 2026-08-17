@@ -245,7 +245,10 @@ export class SalesService {
       },
       // Newest date first; same-day entries fall back to most-recently-entered.
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-      take: params.limit ?? 100,
+      // Only cap the unscoped "Recent" view (no date range) — capping a date-scoped
+      // query too would silently under-report that period's total and truncate its
+      // CSV export once it passes the cap, which is exactly what was happening.
+      take: params.from || params.to ? undefined : (params.limit ?? 100),
       // No `items` here — the list view never renders line items, and each extra
       // relation is its own network round-trip to Neon, which dominates latency.
       include: {
