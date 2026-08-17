@@ -12,6 +12,7 @@ export interface DayCloseRow {
   opening: number;
   totalIn: number;
   totalOut: number;
+  adjustment: number;
   closing: number;
 }
 
@@ -37,7 +38,7 @@ export class DayCloseService {
         const opening = before ? Number(before.balance) : 0;
 
         // Movements within the day.
-        const [inAgg, outAgg, lastOfDay] = await Promise.all([
+        const [inAgg, outAgg, adjustAgg, lastOfDay] = await Promise.all([
           this.prisma.stockMovement.aggregate({
             _sum: { quantity: true },
             where: {
@@ -54,6 +55,16 @@ export class DayCloseService {
               direction: StockDirection.OUT,
             },
           }),
+          // Manual corrections (StockService.adjust/undoAdjustment) — kept separate from
+          // totalIn/totalOut since they aren't a real purchase/sale/production movement.
+          this.prisma.stockMovement.aggregate({
+            _sum: { quantity: true },
+            where: {
+              materialId: m.id,
+              date: { gte: start, lt: end },
+              direction: StockDirection.ADJUST,
+            },
+          }),
           this.prisma.stockMovement.findFirst({
             where: { materialId: m.id, date: { gte: start, lt: end } },
             orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
@@ -62,7 +73,9 @@ export class DayCloseService {
 
         const totalIn = round3(Number(inAgg._sum.quantity ?? 0));
         const totalOut = round3(Number(outAgg._sum.quantity ?? 0));
-        // Closing reflects the true end-of-day balance (includes any adjustments).
+        // ADJUST movements store a signed delta already, so this sum is net for the day.
+        const adjustment = round3(Number(adjustAgg._sum.quantity ?? 0));
+        // Closing reflects the true end-of-day balance — opening + in - out + adjustment.
         const closing = lastOfDay ? Number(lastOfDay.balance) : opening;
 
         return {
@@ -72,6 +85,7 @@ export class DayCloseService {
           opening,
           totalIn,
           totalOut,
+          adjustment,
           closing,
         };
       }),
@@ -100,6 +114,7 @@ export class DayCloseService {
                 opening: r.opening,
                 totalIn: r.totalIn,
                 totalOut: r.totalOut,
+                adjustment: r.adjustment,
                 closing: r.closing,
                 closedById: userId,
               },
@@ -107,6 +122,7 @@ export class DayCloseService {
                 opening: r.opening,
                 totalIn: r.totalIn,
                 totalOut: r.totalOut,
+                adjustment: r.adjustment,
                 closing: r.closing,
                 closedById: userId,
                 closedAt: new Date(),

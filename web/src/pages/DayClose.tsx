@@ -9,6 +9,7 @@ interface Row {
   opening: number;
   totalIn: number;
   totalOut: number;
+  adjustment: number;
   closing: number;
 }
 
@@ -63,6 +64,7 @@ export default function DayClose() {
                 <th className="num">Opening</th>
                 <th className="num">In</th>
                 <th className="num">Out</th>
+                <th className="num">Adjustment</th>
                 <th className="num">Closing</th>
               </tr>
             </thead>
@@ -74,12 +76,15 @@ export default function DayClose() {
                   <td className="num">{qty(r.opening)}</td>
                   <td className="num" style={{ color: 'var(--green)' }}>{qty(r.totalIn)}</td>
                   <td className="num" style={{ color: 'var(--red)' }}>{qty(r.totalOut)}</td>
+                  <td className="num" style={r.adjustment ? { color: r.adjustment > 0 ? 'var(--green)' : 'var(--red)' } : undefined}>
+                    {r.adjustment ? (r.adjustment > 0 ? `+${qty(r.adjustment)}` : qty(r.adjustment)) : '—'}
+                  </td>
                   <td className="num"><strong>{qty(r.closing)}</strong></td>
                 </tr>
               ))}
               {rowsLoading && !rows && (
                 <tr>
-                  <td colSpan={6} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
+                  <td colSpan={7} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
                 </tr>
               )}
             </tbody>

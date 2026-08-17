@@ -471,6 +471,10 @@ model DayClose {
   opening      Decimal  @db.Decimal(14, 3)
   totalIn      Decimal  @db.Decimal(14, 3)
   totalOut     Decimal  @db.Decimal(14, 3)
+  // Net of same-day manual stock adjustments — kept separate from totalIn/totalOut
+  // (which are real purchase/sale/production movement) so opening+in-out+adjustment
+  // reconciles exactly to closing instead of leaving an unexplained gap.
+  adjustment   Decimal  @default(0) @db.Decimal(14, 3)
   closing      Decimal  @db.Decimal(14, 3)
   closedById   String
   closedBy     User     @relation(fields: [closedById], references: [id])
