@@ -130,6 +130,41 @@ export default function Ledger() {
 
   function downloadPdf() {
     if (!ledger) return;
+
+    // Group by the underlying record so an edited/voided entry only appears once, as its
+    // final state — a customer/vendor statement shouldn't show the correction noise, just
+    // what's actually owed. A group whose latest entry is itself a reversal means the
+    // transaction was voided with nothing to replace it, so the whole group is dropped.
+    const groups = new Map<string, LedgerEntryRow[]>();
+    const ungrouped: LedgerEntryRow[] = [];
+    for (const e of filtered) {
+      if (!e.refId) { ungrouped.push(e); continue; }
+      const list = groups.get(e.refId) ?? [];
+      list.push(e);
+      groups.set(e.refId, list);
+    }
+    const cleaned = [
+      ...ungrouped,
+      ...Array.from(groups.values())
+        .map((g) => g[g.length - 1])
+        .filter((e) => !e.refType?.endsWith('_REVERSAL')),
+    ];
+
+    // A statement reads naturally in transaction-date order, not entry-creation order —
+    // re-sort (same-date entries keep their original relative order) and recompute the
+    // running balance to match, since the stored `balance` field is only meaningful in
+    // original creation-order sequence.
+    const withIndex = cleaned.map((e, i) => ({ e, i }));
+    withIndex.sort((a, b) => a.e.date.localeCompare(b.e.date) || a.i - b.i);
+
+    let running = openingForRange;
+    const entries = withIndex.map(({ e }) => {
+      const debit = Number(e.debit);
+      const credit = Number(e.credit);
+      running = partyType === 'CUSTOMER' ? running + debit - credit : running + credit - debit;
+      return { date: e.date, voucher: voucherLabel(e.refType), description: e.description, debit, credit, balance: running };
+    });
+
     downloadLedgerPdf({
       partyName: ledger.name,
       partyPhone: ledger.phone,
@@ -137,17 +172,10 @@ export default function Ledger() {
       periodLabel: pdfPeriodLabel,
       openingBalance: openingForRange,
       openingDateLabel,
-      entries: filtered.map((e) => ({
-        date: e.date,
-        voucher: voucherLabel(e.refType),
-        description: e.description,
-        debit: Number(e.debit),
-        credit: Number(e.credit),
-        balance: Number(e.balance),
-      })),
-      totalDebit,
-      totalCredit,
-      closingBalance,
+      entries,
+      totalDebit: entries.reduce((s, e) => s + e.debit, 0),
+      totalCredit: entries.reduce((s, e) => s + e.credit, 0),
+      closingBalance: entries.length ? entries[entries.length - 1].balance : openingForRange,
     });
   }
 
