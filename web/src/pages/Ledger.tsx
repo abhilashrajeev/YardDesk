@@ -82,6 +82,28 @@ function hideVoidedPayments(entries: LedgerEntryRow[]): LedgerEntryRow[] {
   return entries.filter((e) => !(e.refId && voidedRefIds.has(e.refId) && byRefId.has(e.refId)));
 }
 
+/** Entries come back ordered by when they were POSTED, not by their transaction date —
+ *  a backdated payment entered after a later-dated sale otherwise shows up out of order
+ *  on screen. Re-sort by transaction date (same-date entries keep their relative order)
+ *  and recompute the running balance to match, since the stored `balance` on each row
+ *  is only meaningful in original posting-order sequence. */
+function sortByDateAndRebalance(
+  entries: LedgerEntryRow[],
+  opening: number,
+  partyType: 'CUSTOMER' | 'VENDOR',
+): LedgerEntryRow[] {
+  const withIndex = entries.map((e, i) => ({ e, i }));
+  withIndex.sort((a, b) => a.e.date.localeCompare(b.e.date) || a.i - b.i);
+
+  let running = opening;
+  return withIndex.map(({ e }) => {
+    const debit = Number(e.debit);
+    const credit = Number(e.credit);
+    running = partyType === 'CUSTOMER' ? running + debit - credit : running + credit - debit;
+    return { ...e, balance: String(running) };
+  });
+}
+
 /** Human label for a ledger entry's voucher type — reversal/restore entries share the
  *  same underlying record, so they're distinguished but still open the same detail view. */
 function voucherLabel(refType?: string | null) {
@@ -207,8 +229,13 @@ export default function Ledger() {
 
   // What's actually displayed (table, CSV, PDF) — same figures, but a payment that
   // auto-split across several bills reads as the one line the user actually entered,
-  // and a voided payment's dead original+reversal pair is dropped rather than shown.
-  const displayEntries = hideVoidedPayments(mergePaymentSplits(filtered));
+  // a voided payment's dead original+reversal pair is dropped rather than shown, and
+  // everything reads in true transaction-date order rather than entry-posting order.
+  const displayEntries = sortByDateAndRebalance(
+    hideVoidedPayments(mergePaymentSplits(filtered)),
+    openingForRange,
+    partyType,
+  );
   // The Total Debit/Credit cards must match what's actually listed below them.
   const totalDebit = displayEntries.reduce((s, e) => s + Number(e.debit), 0);
   const totalCredit = displayEntries.reduce((s, e) => s + Number(e.credit), 0);
@@ -232,7 +259,7 @@ export default function Ledger() {
   // A nicer "01 Aug 2026 - 14 Aug 2026" style range when one's active, matching the
   // format of the statement PDFs vendors/customers are already used to seeing.
   const pdfPeriodLabel = from && to ? `${fmtDate(from)} - ${fmtDate(to)}` : periodLabel(period);
-  const openingDateLabel = from ? fmtDate(from) : filtered.length ? fmtDate(filtered[0].date) : 'account opening';
+  const openingDateLabel = from ? fmtDate(from) : displayEntries.length ? fmtDate(displayEntries[0].date) : 'account opening';
 
   function downloadPdf() {
     if (!ledger) return;
@@ -379,18 +406,18 @@ export default function Ledger() {
 
           <div className="panel">
             <div className="between no-print" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 }}>
-              <div>
+              <div className="flex" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <strong>{ledger.name}</strong>
-                {ledger.phone && <span className="muted" style={{ marginLeft: 8, fontSize: 13 }}>{ledger.phone}</span>}
-              </div>
-              <div className="flex" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <PeriodFilter value={period} onChange={setPeriod} allowRecent />
+                {ledger.phone && <span className="muted" style={{ fontSize: 13 }}>{ledger.phone}</span>}
                 {canCreatePayment && (
                   <button type="button" className="btn sm no-print" onClick={openAddPayment}>Add Payment</button>
                 )}
+              </div>
+              <div className="flex" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <PeriodFilter value={period} onChange={setPeriod} allowRecent />
                 <button type="button" className="btn ghost sm" onClick={() => window.print()}>Print</button>
-                <button type="button" className="btn ghost sm" disabled={!filtered.length} onClick={downloadPdf}>Download PDF</button>
                 <ExportCsvButton disabled={!filtered.length} onExport={exportCsv} label="Export CSV" />
+                <button type="button" className="btn" disabled={!filtered.length} onClick={downloadPdf}>Download PDF</button>
               </div>
             </div>
             <div className="body" style={{ padding: 0 }}>
