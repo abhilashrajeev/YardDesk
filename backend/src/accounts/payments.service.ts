@@ -101,6 +101,12 @@ export class PaymentsService {
       if (remaining > 0) allocations.push({ amount: remaining });
 
       const created: Prisma.PaymentGetPayload<Record<string, never>>[] = [];
+      // When a payment splits across several bills, every split shares the first
+      // split's id as its ledger refId. That makes them one logical event: the
+      // ledger displays them merged into a single line for the full amount the
+      // user entered, while each split still exists as its own Payment row
+      // linked to its own bill so per-bill paid/balance tracking stays correct.
+      let batchRefId: string | undefined;
       for (const [i, alloc] of allocations.entries()) {
         const payment = await tx.payment.create({
           data: {
@@ -119,6 +125,7 @@ export class PaymentsService {
             createdById: userId,
           },
         });
+        if (i === 0) batchRefId = payment.id;
 
         if (dto.partyType === PartyType.CUSTOMER) {
           await this.ledger.post(tx, {
@@ -127,7 +134,7 @@ export class PaymentsService {
             description: `Payment received (${dto.mode})`,
             credit: alloc.amount,
             refType: 'PAYMENT',
-            refId: payment.id,
+            refId: batchRefId,
             date,
           });
         } else {
@@ -137,7 +144,7 @@ export class PaymentsService {
             description: `Payment made (${dto.mode})`,
             debit: alloc.amount,
             refType: 'PAYMENT',
-            refId: payment.id,
+            refId: batchRefId,
             date,
           });
         }

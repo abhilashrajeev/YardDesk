@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { api, apiError } from '../api/client';
 import { useFetch, money, fmtDate } from '../lib/hooks';
 import { downloadCsv } from '../lib/csv';
 import { downloadLedgerPdf } from '../lib/ledgerPdf';
 import { Icon } from '../components/Icon';
 import ExportCsvButton from '../components/ExportCsvButton';
+import Modal from '../components/Modal';
 import PeriodFilter, { defaultPeriodState, periodRange, periodLabel } from '../components/PeriodFilter';
 import CustomerPicker from '../components/CustomerPicker';
 import VendorPicker from '../components/VendorPicker';
 import SaleDetail from '../components/SaleDetail';
 import PurchaseDetail from '../components/PurchaseDetail';
-import type { Customer, Vendor } from '../types';
+import { useAuth } from '../auth/AuthContext';
+import type { Customer, Vendor, PaymentMode } from '../types';
 
 interface LedgerEntryRow {
   id: string;
@@ -31,6 +34,54 @@ interface LedgerResponse {
   openingBalance: number;
 }
 
+/** A payment that auto-split across several bills posts one ledger entry per bill, all
+ *  sharing the same refId — merge those back into a single line showing the full amount
+ *  actually entered, since that's what the user typed and expects to see, not the
+ *  behind-the-scenes per-bill breakdown. */
+function mergePaymentSplits(entries: LedgerEntryRow[]): LedgerEntryRow[] {
+  const merged: LedgerEntryRow[] = [];
+  const indexByRefId = new Map<string, number>();
+  for (const e of entries) {
+    if (e.refType === 'PAYMENT' && e.refId) {
+      const idx = indexByRefId.get(e.refId);
+      if (idx !== undefined) {
+        const prev = merged[idx];
+        merged[idx] = {
+          ...prev,
+          debit: String(Number(prev.debit) + Number(e.debit)),
+          credit: String(Number(prev.credit) + Number(e.credit)),
+          balance: e.balance,
+        };
+        continue;
+      }
+      indexByRefId.set(e.refId, merged.length);
+    }
+    merged.push({ ...e });
+  }
+  return merged;
+}
+
+/** A voided payment leaves two lines behind — the original credit/debit and its later
+ *  reversal — which net to zero but still clutter the ledger. Once a payment's most
+ *  recent entry for its refId is the reversal (i.e. nothing was re-entered after it,
+ *  unlike an edit), drop both lines; a real user shouldn't have to read past dead
+ *  entries to see what's actually outstanding. */
+function hideVoidedPayments(entries: LedgerEntryRow[]): LedgerEntryRow[] {
+  const byRefId = new Map<string, LedgerEntryRow[]>();
+  for (const e of entries) {
+    if ((e.refType === 'PAYMENT' || e.refType === 'PAYMENT_REVERSAL') && e.refId) {
+      const list = byRefId.get(e.refId) ?? [];
+      list.push(e);
+      byRefId.set(e.refId, list);
+    }
+  }
+  const voidedRefIds = new Set<string>();
+  for (const [refId, list] of byRefId) {
+    if (list[list.length - 1].refType === 'PAYMENT_REVERSAL') voidedRefIds.add(refId);
+  }
+  return entries.filter((e) => !(e.refId && voidedRefIds.has(e.refId) && byRefId.has(e.refId)));
+}
+
 /** Human label for a ledger entry's voucher type — reversal/restore entries share the
  *  same underlying record, so they're distinguished but still open the same detail view. */
 function voucherLabel(refType?: string | null) {
@@ -49,6 +100,8 @@ function voucherLabel(refType?: string | null) {
 }
 
 export default function Ledger() {
+  const { user } = useAuth();
+  const canCreatePayment = user?.role === 'SUPER_ADMIN' || !!user?.permissions.includes('PAYMENTS');
   const { data: customers, setData: setCustomers } = useFetch<Customer[]>('/customers');
   const { data: vendors, setData: setVendors } = useFetch<Vendor[]>('/vendors');
 
@@ -82,7 +135,52 @@ export default function Ledger() {
       ? `/accounts/customers/${partyId}/ledger`
       : `/accounts/vendors/${partyId}/ledger`
     : null;
-  const { data: ledger, loading } = useFetch<LedgerResponse>(ledgerUrl);
+  const { data: ledger, loading, refetch: refetchLedger } = useFetch<LedgerResponse>(ledgerUrl);
+
+  const [showAddPayment, setShowAddPayment] = useState(false);
+  const [payMode, setPayMode] = useState<PaymentMode>('CASH');
+  const [payAmount, setPayAmount] = useState(0);
+  const [payReference, setPayReference] = useState('');
+  const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10));
+  const [payAutoApply, setPayAutoApply] = useState(true);
+  const [paySaving, setPaySaving] = useState(false);
+  const [payError, setPayError] = useState('');
+
+  function openAddPayment() {
+    setPayMode('CASH');
+    setPayAmount(0);
+    setPayReference('');
+    setPayDate(new Date().toISOString().slice(0, 10));
+    setPayAutoApply(true);
+    setPayError('');
+    setShowAddPayment(true);
+  }
+
+  async function submitAddPayment(e: React.FormEvent) {
+    e.preventDefault();
+    if (payAmount <= 0) return setPayError('Enter an amount.');
+    setPaySaving(true);
+    setPayError('');
+    try {
+      await api.post('/accounts/payments', {
+        partyType,
+        customerId: partyType === 'CUSTOMER' ? partyId : undefined,
+        vendorId: partyType === 'VENDOR' ? partyId : undefined,
+        direction: partyType === 'CUSTOMER' ? 'IN' : 'OUT',
+        mode: payMode,
+        amount: Number(payAmount),
+        reference: payReference || undefined,
+        date: payDate,
+        autoApply: payAutoApply,
+      });
+      setShowAddPayment(false);
+      refetchLedger();
+    } catch (err) {
+      setPayError(apiError(err));
+    } finally {
+      setPaySaving(false);
+    }
+  }
 
   const { from, to } = periodRange(period);
   const allEntries = ledger?.entries ?? [];
@@ -97,15 +195,23 @@ export default function Ledger() {
   // balance when nothing's filtered out, or the running balance as of the cutoff otherwise.
   const firstShownIndex = filtered.length ? allEntries.indexOf(filtered[0]) : allEntries.length;
   const openingForRange = firstShownIndex > 0 ? Number(allEntries[firstShownIndex - 1].balance) : (ledger?.openingBalance ?? 0);
+  // The true running balance always comes from the raw (unfiltered-for-display) entries —
+  // hiding a voided pair from view must never change what the account actually closes at.
   const closingBalance = filtered.length ? Number(filtered[filtered.length - 1].balance) : openingForRange;
-  const totalDebit = filtered.reduce((s, e) => s + Number(e.debit), 0);
-  const totalCredit = filtered.reduce((s, e) => s + Number(e.credit), 0);
   const balanceColor = closingBalance > 0 ? 'var(--red)' : closingBalance < 0 ? 'var(--green)' : 'var(--text-2)';
   const balanceStatus = closingBalance > 0
     ? (partyType === 'CUSTOMER' ? 'Receivable — they owe us' : 'Payable — we owe them')
     : closingBalance < 0
       ? 'Advance / credit'
       : 'Settled';
+
+  // What's actually displayed (table, CSV, PDF) — same figures, but a payment that
+  // auto-split across several bills reads as the one line the user actually entered,
+  // and a voided payment's dead original+reversal pair is dropped rather than shown.
+  const displayEntries = hideVoidedPayments(mergePaymentSplits(filtered));
+  // The Total Debit/Credit cards must match what's actually listed below them.
+  const totalDebit = displayEntries.reduce((s, e) => s + Number(e.debit), 0);
+  const totalCredit = displayEntries.reduce((s, e) => s + Number(e.credit), 0);
 
   function exportCsv() {
     if (!ledger) return;
@@ -119,7 +225,7 @@ export default function Ledger() {
         { header: 'Credit', value: (e: LedgerEntryRow) => e.credit },
         { header: 'Balance', value: (e: LedgerEntryRow) => e.balance },
       ],
-      filtered,
+      displayEntries,
     );
   }
 
@@ -137,7 +243,7 @@ export default function Ledger() {
     // transaction was voided with nothing to replace it, so the whole group is dropped.
     const groups = new Map<string, LedgerEntryRow[]>();
     const ungrouped: LedgerEntryRow[] = [];
-    for (const e of filtered) {
+    for (const e of displayEntries) {
       if (!e.refId) { ungrouped.push(e); continue; }
       const list = groups.get(e.refId) ?? [];
       list.push(e);
@@ -250,7 +356,7 @@ export default function Ledger() {
               <div>
                 <div className="label">Total Debit</div>
                 <div className="value">{money(totalDebit)}</div>
-                <div className="sub">{filtered.filter((e) => Number(e.debit) > 0).length} entries</div>
+                <div className="sub">{displayEntries.filter((e) => Number(e.debit) > 0).length} entries</div>
               </div>
             </div>
             <div className="stat">
@@ -258,7 +364,7 @@ export default function Ledger() {
               <div>
                 <div className="label">Total Credit</div>
                 <div className="value">{money(totalCredit)}</div>
-                <div className="sub">{filtered.filter((e) => Number(e.credit) > 0).length} entries</div>
+                <div className="sub">{displayEntries.filter((e) => Number(e.credit) > 0).length} entries</div>
               </div>
             </div>
             <div className="stat">
@@ -279,6 +385,9 @@ export default function Ledger() {
               </div>
               <div className="flex" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <PeriodFilter value={period} onChange={setPeriod} allowRecent />
+                {canCreatePayment && (
+                  <button type="button" className="btn sm no-print" onClick={openAddPayment}>Add Payment</button>
+                )}
                 <button type="button" className="btn ghost sm" onClick={() => window.print()}>Print</button>
                 <button type="button" className="btn ghost sm" disabled={!filtered.length} onClick={downloadPdf}>Download PDF</button>
                 <ExportCsvButton disabled={!filtered.length} onExport={exportCsv} label="Export CSV" />
@@ -301,7 +410,7 @@ export default function Ledger() {
                     <td colSpan={5} style={{ fontWeight: 600 }}>Opening Balance</td>
                     <td className="num" style={{ fontWeight: 700 }}>{money(openingForRange)}</td>
                   </tr>
-                  {filtered.map((e) => (
+                  {displayEntries.map((e) => (
                     <tr key={e.id}>
                       <td>{fmtDate(e.date)}</td>
                       <td>
@@ -324,7 +433,7 @@ export default function Ledger() {
                       <td className="num">{money(e.balance)}</td>
                     </tr>
                   ))}
-                  {!filtered.length && (
+                  {!displayEntries.length && (
                     <tr>
                       <td colSpan={6} className="muted" style={{ padding: 16, textAlign: 'center' }}>No transactions in this period.</td>
                     </tr>
@@ -346,6 +455,46 @@ export default function Ledger() {
 
       {viewSaleId && <SaleDetail id={viewSaleId} onClose={() => setViewSaleId(null)} />}
       {viewPurchaseId && <PurchaseDetail id={viewPurchaseId} onClose={() => setViewPurchaseId(null)} />}
+
+      {showAddPayment && ledger && (
+        <Modal title={`Add Payment — ${ledger.name}`} onClose={() => setShowAddPayment(false)}>
+          <form onSubmit={submitAddPayment}>
+            <div className="row">
+              <div>
+                <label>Mode</label>
+                <select value={payMode} onChange={(e) => setPayMode(e.target.value as PaymentMode)}>
+                  <option value="CASH">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="BANK">Bank</option>
+                </select>
+              </div>
+              <div>
+                <label>Amount</label>
+                <input type="number" value={payAmount || ''} onChange={(e) => setPayAmount(Number(e.target.value))} autoFocus />
+              </div>
+              <div>
+                <label>Reference (optional)</label>
+                <input value={payReference} onChange={(e) => setPayReference(e.target.value)} />
+              </div>
+              <div>
+                <label>Date</label>
+                <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, paddingBottom: 9 }}>
+                <input type="checkbox" style={{ width: 'auto' }} checked={payAutoApply} onChange={(e) => setPayAutoApply(e.target.checked)} />
+                <label style={{ margin: 0 }} title="On: split across the oldest open bills first. Off: one lump payment against the total outstanding, not tied to a specific bill.">
+                  Apply to outstanding bills
+                </label>
+              </div>
+            </div>
+            {payError && <div className="err">{payError}</div>}
+            <div className="between" style={{ marginTop: 10 }}>
+              <button type="button" className="btn ghost" onClick={() => setShowAddPayment(false)}>Cancel</button>
+              <button type="submit" className="btn" disabled={paySaving}>{paySaving ? 'Saving…' : 'Record Payment'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </>
   );
 }
