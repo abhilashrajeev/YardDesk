@@ -37,7 +37,8 @@ export default function Payments() {
   const [editing, setEditing] = useState<Payment | null>(null);
 
   const [search, setSearch] = useState('');
-  const filteredPayments = (payments ?? []).filter((p) => {
+  const visiblePayments = (payments ?? []).filter((p) => !p.voided);
+  const filteredPayments = visiblePayments.filter((p) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -225,7 +226,7 @@ export default function Payments() {
             </thead>
             <tbody>
               {filteredPayments.map((p) => (
-                <tr key={p.id} style={p.voided ? { opacity: 0.5 } : undefined}>
+                <tr key={p.id}>
                   <td>{fmtDate(p.date)}</td>
                   <td>{p.customer?.name ?? p.vendor?.name}</td>
                   <td>
@@ -234,14 +235,12 @@ export default function Payments() {
                   <td>{p.mode}</td>
                   <td className="num">{money(p.amount)}</td>
                   <td className="right">
-                    {p.voided ? (
-                      <span className="pill neg">Voided</span>
-                    ) : (canCreate || isAdmin) ? (
+                    {(canCreate || isAdmin) && (
                       <div className="flex" style={{ gap: 6, justifyContent: 'flex-end' }}>
                         {canCreate && <button className="btn sm ghost" onClick={() => setEditing(p)}>Edit</button>}
                         {isAdmin && <button className="btn sm ghost" onClick={() => remove(p)}>Delete</button>}
                       </div>
-                    ) : null}
+                    )}
                   </td>
                 </tr>
               ))}
@@ -250,12 +249,12 @@ export default function Payments() {
                   <td colSpan={6} className="muted" style={{ padding: 16, textAlign: 'center' }}>Loading…</td>
                 </tr>
               )}
-              {payments?.length === 0 && (
+              {visiblePayments.length === 0 && !paymentsLoading && (
                 <tr>
                   <td colSpan={6} className="muted" style={{ padding: 16 }}>No payments yet.</td>
                 </tr>
               )}
-              {(payments?.length ?? 0) > 0 && filteredPayments.length === 0 && (
+              {visiblePayments.length > 0 && filteredPayments.length === 0 && (
                 <tr>
                   <td colSpan={6} className="muted" style={{ padding: 16 }}>No payments match "{search}".</td>
                 </tr>
