@@ -28,6 +28,19 @@ export class LedgerService {
    * payments received credit the customer; payments made debit the vendor.
    */
   async post(tx: Prisma.TransactionClient, p: PostParams): Promise<number> {
+    // Lock the party's own row before reading/writing its ledger. Without this, two
+    // transactions touching the same customer/vendor moments apart (e.g. editing a bill's
+    // discount, then immediately recording a payment) can race: each reads the "current"
+    // balance before the other commits, so the second one's write silently overwrites the
+    // first's effect instead of building on it — a classic lost-update bug. Locking here
+    // makes the second transaction wait for the first to commit, so it reads the true
+    // up-to-date balance instead of a stale one.
+    if (p.partyType === PartyType.CUSTOMER) {
+      await tx.$queryRaw`SELECT id FROM "Customer" WHERE id = ${p.customerId} FOR UPDATE`;
+    } else {
+      await tx.$queryRaw`SELECT id FROM "Vendor" WHERE id = ${p.vendorId} FOR UPDATE`;
+    }
+
     const debit = round2(p.debit ?? 0);
     const credit = round2(p.credit ?? 0);
     const prev = await this.currentBalance(tx, p.partyType, p.customerId, p.vendorId);
