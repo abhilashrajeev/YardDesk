@@ -214,6 +214,8 @@ thead th {
 tbody tr { transition: background 0.1s; }
 tbody tr:hover { background: #fafbfc; }
 tbody tr:last-child td { border-bottom: none; }
+tbody tr.row-link { cursor: pointer; }
+tbody tr.row-link:hover { background: #f1f5fb; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ---------- Forms & buttons ---------- */

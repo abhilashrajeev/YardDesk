@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useFetch, money, fmtDate, statusPillClass } from '../lib/hooks';
 import { Icon } from '../components/Icon';
 import SaleDetail from '../components/SaleDetail';
@@ -6,6 +7,7 @@ import PurchaseDetail from '../components/PurchaseDetail';
 import type { Sale, Purchase, Outstanding as OutstandingParty } from '../types';
 
 export default function Outstanding() {
+  const navigate = useNavigate();
   const { data: custBal, loading: custLoading } = useFetch<OutstandingParty[]>('/accounts/outstanding/customers');
   const { data: vendBal, loading: vendLoading } = useFetch<OutstandingParty[]>('/accounts/outstanding/vendors');
   const { data: pendingSales, loading: salesLoading, refetch: refetchSales } = useFetch<Sale[]>('/sales/outstanding');
@@ -72,7 +74,11 @@ export default function Outstanding() {
                 <tr><td colSpan={2} className="muted" style={{ padding: 16 }}>Loading…</td></tr>
               ) : custBal?.length ? (
                 custBal.map((c) => (
-                  <tr key={c.id}>
+                  <tr
+                    key={c.id}
+                    className="row-link"
+                    onClick={() => navigate(`/ledger?type=CUSTOMER&id=${c.id}`)}
+                  >
                     <td style={{ fontWeight: 500 }}>{c.name}</td>
                     <td className="num" style={{ color: 'var(--red)', fontWeight: 700 }}>{money(c.balance)}</td>
                   </tr>
@@ -94,7 +100,11 @@ export default function Outstanding() {
                 <tr><td colSpan={2} className="muted" style={{ padding: 16 }}>Loading…</td></tr>
               ) : vendBal?.length ? (
                 vendBal.map((v) => (
-                  <tr key={v.id}>
+                  <tr
+                    key={v.id}
+                    className="row-link"
+                    onClick={() => navigate(`/ledger?type=VENDOR&id=${v.id}`)}
+                  >
                     <td style={{ fontWeight: 500 }}>{v.name}</td>
                     <td className="num" style={{ color: 'var(--red)', fontWeight: 700 }}>{money(v.balance)}</td>
                   </tr>
