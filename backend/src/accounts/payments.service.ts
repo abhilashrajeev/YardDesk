@@ -5,7 +5,7 @@ import { LedgerService } from './ledger.service';
 import { AuditService } from '../audit/audit.service';
 import { CreatePaymentDto, UpdatePaymentDto, AllocatePaymentDto } from './payments.dto';
 import { round2 } from '../common/money';
-import { TXN_OPTIONS } from '../common/db';
+import { TXN_OPTIONS, isUniqueViolation } from '../common/db';
 import { istDayRange } from '../common/date';
 
 @Injectable()
@@ -83,91 +83,103 @@ export class PaymentsService {
       if (!vendor) throw new NotFoundException('Vendor not found');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      // autoApply: false records one lump payment against the party's overall balance —
-      // not split across bills — e.g. for a customer/vendor who just wants "I paid X
-      // today" reflected without picking which specific invoices it covers.
-      const outstanding = dto.autoApply === false ? [] : await this.getOutstandingInvoices(tx, dto);
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // autoApply: false records one lump payment against the party's overall balance —
+        // not split across bills — e.g. for a customer/vendor who just wants "I paid X
+        // today" reflected without picking which specific invoices it covers.
+        const outstanding = dto.autoApply === false ? [] : await this.getOutstandingInvoices(tx, dto);
 
-      // Each entry is one resulting Payment row: `undefined` invoiceId means
-      // it's the unlinked leftover (an advance) rather than applied to a bill.
-      const allocations: { amount: number; invoiceId?: string }[] = [];
-      for (const invoice of outstanding) {
-        if (remaining <= 0) break;
-        const alloc = round2(Math.min(remaining, invoice.balance));
-        allocations.push({ amount: alloc, invoiceId: invoice.id });
-        remaining = round2(remaining - alloc);
-      }
-      if (remaining > 0) allocations.push({ amount: remaining });
+        // Each entry is one resulting Payment row: `undefined` invoiceId means
+        // it's the unlinked leftover (an advance) rather than applied to a bill.
+        const allocations: { amount: number; invoiceId?: string }[] = [];
+        for (const invoice of outstanding) {
+          if (remaining <= 0) break;
+          const alloc = round2(Math.min(remaining, invoice.balance));
+          allocations.push({ amount: alloc, invoiceId: invoice.id });
+          remaining = round2(remaining - alloc);
+        }
+        if (remaining > 0) allocations.push({ amount: remaining });
 
-      const created: Prisma.PaymentGetPayload<Record<string, never>>[] = [];
-      // When a payment splits across several bills, every split shares the first
-      // split's id as its ledger refId. That makes them one logical event: the
-      // ledger displays them merged into a single line for the full amount the
-      // user entered, while each split still exists as its own Payment row
-      // linked to its own bill so per-bill paid/balance tracking stays correct.
-      let batchRefId: string | undefined;
-      for (const [i, alloc] of allocations.entries()) {
-        const payment = await tx.payment.create({
-          data: {
-            clientUuid: i === 0 ? dto.clientUuid : undefined,
-            date,
-            direction: dto.direction,
-            mode: dto.mode,
-            amount: alloc.amount,
-            reference: dto.reference,
-            notes: dto.notes,
-            partyType: dto.partyType,
-            customerId: dto.customerId,
-            vendorId: dto.vendorId,
-            saleId: dto.partyType === PartyType.CUSTOMER ? alloc.invoiceId : undefined,
-            purchaseId: dto.partyType === PartyType.VENDOR ? alloc.invoiceId : undefined,
-            createdById: userId,
-          },
-        });
-        if (i === 0) batchRefId = payment.id;
-
-        if (dto.partyType === PartyType.CUSTOMER) {
-          await this.ledger.post(tx, {
-            partyType: PartyType.CUSTOMER,
-            customerId: dto.customerId,
-            description: `Payment received (${dto.mode})`,
-            credit: alloc.amount,
-            refType: 'PAYMENT',
-            refId: batchRefId,
-            date,
+        const created: Prisma.PaymentGetPayload<Record<string, never>>[] = [];
+        // When a payment splits across several bills, every split shares the first
+        // split's id as its ledger refId. That makes them one logical event: the
+        // ledger displays them merged into a single line for the full amount the
+        // user entered, while each split still exists as its own Payment row
+        // linked to its own bill so per-bill paid/balance tracking stays correct.
+        let batchRefId: string | undefined;
+        for (const [i, alloc] of allocations.entries()) {
+          const payment = await tx.payment.create({
+            data: {
+              clientUuid: i === 0 ? dto.clientUuid : undefined,
+              date,
+              direction: dto.direction,
+              mode: dto.mode,
+              amount: alloc.amount,
+              reference: dto.reference,
+              notes: dto.notes,
+              partyType: dto.partyType,
+              customerId: dto.customerId,
+              vendorId: dto.vendorId,
+              saleId: dto.partyType === PartyType.CUSTOMER ? alloc.invoiceId : undefined,
+              purchaseId: dto.partyType === PartyType.VENDOR ? alloc.invoiceId : undefined,
+              createdById: userId,
+            },
           });
-        } else {
-          await this.ledger.post(tx, {
-            partyType: PartyType.VENDOR,
-            vendorId: dto.vendorId,
-            description: `Payment made (${dto.mode})`,
-            debit: alloc.amount,
-            refType: 'PAYMENT',
-            refId: batchRefId,
-            date,
-          });
+          if (i === 0) batchRefId = payment.id;
+
+          if (dto.partyType === PartyType.CUSTOMER) {
+            await this.ledger.post(tx, {
+              partyType: PartyType.CUSTOMER,
+              customerId: dto.customerId,
+              description: `Payment received (${dto.mode})`,
+              credit: alloc.amount,
+              refType: 'PAYMENT',
+              refId: batchRefId,
+              date,
+            });
+          } else {
+            await this.ledger.post(tx, {
+              partyType: PartyType.VENDOR,
+              vendorId: dto.vendorId,
+              description: `Payment made (${dto.mode})`,
+              debit: alloc.amount,
+              refType: 'PAYMENT',
+              refId: batchRefId,
+              date,
+            });
+          }
+
+          await this.audit.log(
+            {
+              entityType: 'PAYMENT',
+              entityId: payment.id,
+              action: AuditAction.CREATE,
+              summary: alloc.invoiceId
+                ? `Payment ${dto.partyType === PartyType.CUSTOMER ? 'received' : 'made'} — ₹${alloc.amount} (${dto.mode}), auto-applied to oldest bill`
+                : `Payment ${dto.partyType === PartyType.CUSTOMER ? 'received' : 'made'} — ₹${alloc.amount} (${dto.mode})${outstanding.length ? ' (advance — no bill left to apply it to)' : ''}`,
+              after: payment,
+              userId,
+            },
+            tx,
+          );
+
+          created.push(payment);
         }
 
-        await this.audit.log(
-          {
-            entityType: 'PAYMENT',
-            entityId: payment.id,
-            action: AuditAction.CREATE,
-            summary: alloc.invoiceId
-              ? `Payment ${dto.partyType === PartyType.CUSTOMER ? 'received' : 'made'} — ₹${alloc.amount} (${dto.mode}), auto-applied to oldest bill`
-              : `Payment ${dto.partyType === PartyType.CUSTOMER ? 'received' : 'made'} — ₹${alloc.amount} (${dto.mode})${outstanding.length ? ' (advance — no bill left to apply it to)' : ''}`,
-            after: payment,
-            userId,
-          },
-          tx,
-        );
-
-        created.push(payment);
+        return created;
+      }, TXN_OPTIONS);
+    } catch (e) {
+      // Same clientUuid raced an identical earlier request (e.g. a slow request that
+      // got retried) — return the payment that request saved instead of failing/duplicating.
+      if (dto.clientUuid && isUniqueViolation(e)) {
+        const existing = await this.prisma.payment.findUnique({
+          where: { clientUuid: dto.clientUuid },
+        });
+        if (existing) return [existing];
       }
-
-      return created;
-    }, TXN_OPTIONS);
+      throw e;
+    }
   }
 
   list(params: {

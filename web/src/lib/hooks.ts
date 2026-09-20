@@ -33,6 +33,14 @@ export function useFetch<T>(url: string | null) {
   return { data, loading, error, refetch, setData };
 }
 
+/** Idempotency key for a create request. The form generates one per entry and re-sends the
+ * same key on every retry of that entry, so the server saves it once even if the first
+ * (slow) attempt actually went through. */
+export const newClientUuid = (): string =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+
 /** Rounds to 2 decimals — avoids float artifacts like 100 * 2.2 = 220.00000000000003. Matches backend's round2. */
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 

@@ -15,7 +15,7 @@ import { PaymentsService } from '../accounts/payments.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateSaleDto, UpdateSaleDto, CreatePassDto } from './dto';
 import { round2 } from '../common/money';
-import { TXN_OPTIONS } from '../common/db';
+import { TXN_OPTIONS, isUniqueViolation } from '../common/db';
 import { istDayRange } from '../common/date';
 
 type SaleStatus = 'PAID' | 'PART_PAID' | 'PENDING' | 'OVERDUE';
@@ -100,82 +100,95 @@ export class SalesService {
         ? round2(dto.paidAmount ?? 0)
         : total;
 
-    return this.prisma.$transaction(async (tx) => {
-      const billNo = await this.nextBillNo(tx);
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const billNo = await this.nextBillNo(tx);
 
-      const sale = await tx.sale.create({
-        data: {
-          clientUuid: dto.clientUuid,
-          billNo,
-          date,
+        const sale = await tx.sale.create({
+          data: {
+            clientUuid: dto.clientUuid,
+            billNo,
+            date,
+            customerId: dto.customerId,
+            vehicleId: dto.vehicleId,
+            freight,
+            discount,
+            subTotal,
+            total,
+            paymentMode: dto.paymentMode,
+            status: TxnStatus.CONFIRMED,
+            notes: dto.notes,
+            createdById: userId,
+            items: { create: items },
+          },
+          include: { items: true },
+        });
+
+        // Stock OUT for every line.
+        for (const it of items) {
+          await this.stock.apply(tx, {
+            materialId: it.materialId,
+            direction: StockDirection.OUT,
+            quantity: it.quantity,
+            refType: 'SALE',
+            refId: sale.id,
+            date,
+          });
+        }
+
+        // Customer now owes us the full bill.
+        await this.ledger.post(tx, {
+          partyType: PartyType.CUSTOMER,
           customerId: dto.customerId,
-          vehicleId: dto.vehicleId,
-          freight,
-          discount,
-          subTotal,
-          total,
-          paymentMode: dto.paymentMode,
-          status: TxnStatus.CONFIRMED,
-          notes: dto.notes,
-          createdById: userId,
-          items: { create: items },
-        },
-        include: { items: true },
-      });
-
-      // Stock OUT for every line.
-      for (const it of items) {
-        await this.stock.apply(tx, {
-          materialId: it.materialId,
-          direction: StockDirection.OUT,
-          quantity: it.quantity,
+          description: `Sale bill ${billNo}`,
+          debit: total,
           refType: 'SALE',
           refId: sale.id,
           date,
         });
-      }
 
-      // Customer now owes us the full bill.
-      await this.ledger.post(tx, {
-        partyType: PartyType.CUSTOMER,
-        customerId: dto.customerId,
-        description: `Sale bill ${billNo}`,
-        debit: total,
-        refType: 'SALE',
-        refId: sale.id,
-        date,
-      });
-
-      // Record collected amount (full for cash sales, part for credit).
-      if (paid > 0) {
-        const payment = await tx.payment.create({
-          data: {
-            date,
-            direction: PaymentDirection.IN,
-            mode:
-              dto.paymentMode === PaymentMode.CREDIT
-                ? PaymentMode.CASH
-                : dto.paymentMode,
-            amount: paid,
+        // Record collected amount (full for cash sales, part for credit).
+        if (paid > 0) {
+          const payment = await tx.payment.create({
+            data: {
+              date,
+              direction: PaymentDirection.IN,
+              mode:
+                dto.paymentMode === PaymentMode.CREDIT
+                  ? PaymentMode.CASH
+                  : dto.paymentMode,
+              amount: paid,
+              partyType: PartyType.CUSTOMER,
+              customerId: dto.customerId,
+              saleId: sale.id,
+              createdById: userId,
+            },
+          });
+          await this.ledger.post(tx, {
             partyType: PartyType.CUSTOMER,
             customerId: dto.customerId,
-            saleId: sale.id,
-            createdById: userId,
-          },
-        });
-        await this.ledger.post(tx, {
-          partyType: PartyType.CUSTOMER,
-          customerId: dto.customerId,
-          description: `Payment for bill ${billNo}`,
-          credit: paid,
-          refType: 'PAYMENT',
-          refId: payment.id,
-          date,
-        });
-      }
+            description: `Payment for bill ${billNo}`,
+            credit: paid,
+            refType: 'PAYMENT',
+            refId: payment.id,
+            date,
+          });
+        }
 
-      return sale;
-    }, TXN_OPTIONS);
+        return sale;
+      }, TXN_OPTIONS);
+    } catch (e) {
+      // Same clientUuid raced an identical earlier request (e.g. a slow request that
+      // got retried) — return the sale that request saved instead of failing/duplicating.
+      if (dto.clientUuid && isUniqueViolation(e)) {
+        const existing = await this.prisma.sale.findUnique({
+          where: { clientUuid: dto.clientUuid },
+          include: { items: true },
+        });
+        if (existing) return existing;
+      }
+      throw e;
+    }
   }
 
   /**

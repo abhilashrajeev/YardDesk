@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard, RolesGuard, PermissionsGuard } from './auth/guards';
@@ -22,6 +22,7 @@ import { ExpensesModule } from './expenses/expenses.module';
 import { UsersModule } from './users/users.module';
 import { ProductionModule } from './production/production.module';
 import { HealthController } from './health.controller';
+import { TimingInterceptor } from './common/timing.interceptor';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { HealthController } from './health.controller';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
+    { provide: APP_INTERCEPTOR, useClass: TimingInterceptor },
   ],
 })
 export class AppModule {}

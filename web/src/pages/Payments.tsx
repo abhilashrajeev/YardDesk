@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api, apiError } from '../api/client';
-import { useFetch, money, fmtDate } from '../lib/hooks';
+import { useFetch, money, fmtDate, newClientUuid } from '../lib/hooks';
 import { downloadCsv } from '../lib/csv';
 import { useAuth } from '../auth/AuthContext';
 import ExportCsvButton from '../components/ExportCsvButton';
@@ -34,6 +34,8 @@ export default function Payments() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  // One key per entry, re-sent on every retry, so a slow request that is submitted again can't record the payment twice.
+  const attemptId = useRef(newClientUuid());
   const [editing, setEditing] = useState<Payment | null>(null);
 
   const [search, setSearch] = useState('');
@@ -57,6 +59,7 @@ export default function Payments() {
     setSaving(true);
     try {
       await api.post('/accounts/payments', {
+        clientUuid: attemptId.current,
         partyType,
         customerId: partyType === 'CUSTOMER' ? partyId : undefined,
         vendorId: partyType === 'VENDOR' ? partyId : undefined,
@@ -68,6 +71,7 @@ export default function Payments() {
         autoApply,
       });
       setMsg('Payment recorded.');
+      attemptId.current = newClientUuid();
       setPartyId('');
       setMode('CASH');
       setAmount(0);

@@ -26,22 +26,31 @@ export class StockService {
    * Negative stock is allowed (yards often sell ahead of recording a purchase).
    */
   async apply(tx: Prisma.TransactionClient, p: ApplyParams): Promise<number> {
-    const material = await tx.material.findUnique({ where: { id: p.materialId } });
-    if (!material) throw new NotFoundException(`Material ${p.materialId} not found`);
-
-    const current = Number(material.currentStock);
     const delta =
       p.direction === StockDirection.IN
         ? p.quantity
         : p.direction === StockDirection.OUT
           ? -p.quantity
           : p.quantity; // ADJUST: signed delta
-    const newBalance = round3(current + delta);
 
-    await tx.material.update({
-      where: { id: material.id },
-      data: { currentStock: newBalance },
-    });
+    // Single atomic increment: one database round trip instead of read-then-write
+    // (each round trip to the cloud DB is slow), and safe if two entries touch the
+    // same material at once.
+    let updated: { currentStock: Prisma.Decimal };
+    try {
+      updated = await tx.material.update({
+        where: { id: p.materialId },
+        data: { currentStock: { increment: delta } },
+        select: { currentStock: true },
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'P2025') {
+        throw new NotFoundException(`Material ${p.materialId} not found`);
+      }
+      throw e;
+    }
+    const newBalance = round3(Number(updated.currentStock));
+
     await tx.stockMovement.create({
       data: {
         materialId: p.materialId,

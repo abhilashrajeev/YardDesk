@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, apiError } from '../api/client';
-import { useFetch, money, fmtDate, statusPillClass } from '../lib/hooks';
+import { useFetch, money, fmtDate, statusPillClass, newClientUuid } from '../lib/hooks';
 import { downloadCsv } from '../lib/csv';
 import { useAuth } from '../auth/AuthContext';
 import PurchaseLineItems from '../components/PurchaseLineItems';
@@ -234,6 +234,8 @@ function NewPurchase({
   ]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  // One key per entry, re-sent on every retry, so a slow request that is submitted again can't create a duplicate purchase.
+  const attemptId = useRef(newClientUuid());
 
   const subTotal = lines.reduce((s, l) => s + (l.amountOverride ?? l.quantity * l.rate), 0);
   const total = subTotal + Number(freight);
@@ -290,6 +292,7 @@ function NewPurchase({
     try {
       const vehicleId = await resolveVehicleId();
       await api.post('/purchases', {
+        clientUuid: attemptId.current,
         vendorId,
         vehicleId,
         date,
@@ -305,6 +308,7 @@ function NewPurchase({
           amount: amountOverride,
         })),
       });
+      attemptId.current = newClientUuid();
       onDone();
     } catch (err) {
       setError(apiError(err));
