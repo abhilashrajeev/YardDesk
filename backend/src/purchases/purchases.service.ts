@@ -15,7 +15,7 @@ import { PaymentsService } from '../accounts/payments.service';
 import { AuditService } from '../audit/audit.service';
 import { CreatePurchaseDto, UpdatePurchaseDto } from './dto';
 import { round2 } from '../common/money';
-import { TXN_OPTIONS } from '../common/db';
+import { TXN_OPTIONS, isUniqueViolation } from '../common/db';
 import { convertQty } from '../common/units';
 import { istDayRange } from '../common/date';
 
@@ -118,81 +118,94 @@ export class PurchasesService {
     const total = round2(subTotal + freight);
     const date = dto.date ? new Date(dto.date) : new Date();
 
-    return this.prisma.$transaction(async (tx) => {
-      const purchase = await tx.purchase.create({
-        data: {
-          clientUuid: dto.clientUuid,
-          invoiceNo: dto.invoiceNo,
-          date,
-          vendorId: dto.vendorId,
-          vehicleId: dto.vehicleId,
-          freight,
-          subTotal,
-          total,
-          status: TxnStatus.CONFIRMED,
-          notes: dto.notes,
-          createdById: userId,
-          items: { create: items },
-        },
-        include: { items: true },
-      });
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const purchase = await tx.purchase.create({
+          data: {
+            clientUuid: dto.clientUuid,
+            invoiceNo: dto.invoiceNo,
+            date,
+            vendorId: dto.vendorId,
+            vehicleId: dto.vehicleId,
+            freight,
+            subTotal,
+            total,
+            status: TxnStatus.CONFIRMED,
+            notes: dto.notes,
+            createdById: userId,
+            items: { create: items },
+          },
+          include: { items: true },
+        });
 
-      // Stock IN for every line, converted from the transacted unit into the
-      // material's stock unit (e.g. 50 TON purchased -> +1050 CFT in stock).
-      for (const it of items) {
-        const material = materialById.get(it.materialId)!;
-        const stockQty = convertQty(it.quantity, it.unit, material.unit);
-        await this.stock.apply(tx, {
-          materialId: it.materialId,
-          direction: StockDirection.IN,
-          quantity: stockQty,
+        // Stock IN for every line, converted from the transacted unit into the
+        // material's stock unit (e.g. 50 TON purchased -> +1050 CFT in stock).
+        for (const it of items) {
+          const material = materialById.get(it.materialId)!;
+          const stockQty = convertQty(it.quantity, it.unit, material.unit);
+          await this.stock.apply(tx, {
+            materialId: it.materialId,
+            direction: StockDirection.IN,
+            quantity: stockQty,
+            refType: 'PURCHASE',
+            refId: purchase.id,
+            date,
+          });
+        }
+
+        const label = await this.purchaseLabel(tx, purchase, items);
+
+        // We now owe the vendor the full total.
+        await this.ledger.post(tx, {
+          partyType: PartyType.VENDOR,
+          vendorId: dto.vendorId,
+          description: `Purchase ${label}`,
+          credit: total,
           refType: 'PURCHASE',
           refId: purchase.id,
           date,
         });
-      }
 
-      const label = await this.purchaseLabel(tx, purchase, items);
-
-      // We now owe the vendor the full total.
-      await this.ledger.post(tx, {
-        partyType: PartyType.VENDOR,
-        vendorId: dto.vendorId,
-        description: `Purchase ${label}`,
-        credit: total,
-        refType: 'PURCHASE',
-        refId: purchase.id,
-        date,
-      });
-
-      // Optional immediate payment.
-      const paid = round2(dto.paidAmount ?? 0);
-      if (paid > 0 && dto.paymentMode) {
-        const payment = await tx.payment.create({
-          data: {
-            date,
-            direction: PaymentDirection.OUT,
-            mode: dto.paymentMode,
-            amount: paid,
+        // Optional immediate payment.
+        const paid = round2(dto.paidAmount ?? 0);
+        if (paid > 0 && dto.paymentMode) {
+          const payment = await tx.payment.create({
+            data: {
+              date,
+              direction: PaymentDirection.OUT,
+              mode: dto.paymentMode,
+              amount: paid,
+              partyType: PartyType.VENDOR,
+              vendorId: dto.vendorId,
+              purchaseId: purchase.id,
+              createdById: userId,
+            },
+          });
+          await this.ledger.post(tx, {
             partyType: PartyType.VENDOR,
             vendorId: dto.vendorId,
-            purchaseId: purchase.id,
-            createdById: userId,
-          },
-        });
-        await this.ledger.post(tx, {
-          partyType: PartyType.VENDOR,
-          vendorId: dto.vendorId,
-          description: `Payment for purchase ${label}`,
-          debit: paid,
-          refType: 'PAYMENT',
-          refId: payment.id,
-          date,
-        });
-      }
+            description: `Payment for purchase ${label}`,
+            debit: paid,
+            refType: 'PAYMENT',
+            refId: payment.id,
+            date,
+          });
+        }
 
-      return purchase;
-    }, TXN_OPTIONS);
+        return purchase;
+      }, TXN_OPTIONS);
+    } catch (e) {
+      // Same clientUuid raced an identical earlier request (e.g. a slow request that
+      // got retried) — return the purchase that request saved instead of failing/duplicating.
+      if (dto.clientUuid && isUniqueViolation(e)) {
+        const existing = await this.prisma.purchase.findUnique({
+          where: { clientUuid: dto.clientUuid },
+          include: { items: true },
+        });
+        if (existing) return existing;
+      }
+      throw e;
+    }
   }
 
   async list(params: { vendorId?: string; from?: string; to?: string; limit?: number }) {
