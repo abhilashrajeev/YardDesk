@@ -3,7 +3,10 @@ services:
     name: yarddesk-api
     runtime: node
     plan: free
-    region: singapore
+    # Keep this in the SAME region as the Neon database (AWS us-east-1 = N. Virginia).
+    # Every request runs ~20 sequential DB queries, so a cross-ocean gap (~250 ms each)
+    # turns a save into 5-10+ seconds. Render's "virginia" region sits next to Neon us-east-1.
+    region: virginia
     rootDir: backend
     # Free tier doesn't support preDeployCommand, so the migration runs as part of the
     # build instead — still safe/non-interactive (never `migrate dev` in production).
