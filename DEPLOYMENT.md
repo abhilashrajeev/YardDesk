@@ -12,6 +12,22 @@ test against a live URL.
 Both are on free tiers. The API spins down after inactivity — the first request after
 a quiet period takes 30-60s to wake back up; that's expected, not an error.
 
+## Regions (keep the API next to the database)
+
+The Neon database lives in AWS **us-east-1 (N. Virginia)**, so the API runs in Render's
+**Virginia** region. Saving one sale/purchase runs ~20 database queries back to back; if the
+API and database are on opposite sides of the world, each query adds ~250 ms and a single
+entry takes many seconds (and can time out, which is how duplicate entries used to happen).
+If you ever move the database to another region, move the API with it.
+
+Render can't change the region of an existing service. To move it: delete (or rename) the
+old `yarddesk-api` service, create a new Blueprint from `render.yaml` in the new region, set
+`DATABASE_URL` (and the JWT secrets) on it, and — if the new URL differs from
+`https://yarddesk-api.onrender.com` — update `VITE_API_URL` in Vercel and redeploy the web app.
+
+Optional: an uptime monitor pinging `/api/health` every 5 minutes keeps both the free Render
+service and the free Neon compute from sleeping, so the first entry after a quiet spell isn't slow.
+
 ## 1. Backend — Render
 
 1. Go to [render.com](https://render.com) → New → Blueprint, connect the
