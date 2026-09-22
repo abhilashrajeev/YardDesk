@@ -136,33 +136,51 @@ export class ReportsService {
       .sort((a, b) => b.soldAmt - a.soldAmt);
   }
 
-  /** Stock value at an instant, valuing each material's balance at its current purchase
-   *  rate (no batch/FIFO cost history is tracked, so this is a snapshot approximation). */
-  private async stockValueAt(at: Date, unitCost: Map<string, number>): Promise<number> {
+  /**
+   * Stock balance of every material at an instant, rebuilt from the movements dated before it.
+   *
+   * Deliberately NOT read from StockMovement.balance: that column is the running balance at the
+   * moment a row was *entered*, not on the date it is dated. When entries are keyed in out of date
+   * order (sales first, their purchases added later, often back-dated) a purchase dated 31 Aug can
+   * carry a balance that already has September's sales taken off, which made the closing stock -
+   * and therefore the profit - of past periods wrong. Summing the signed quantities by date does
+   * not depend on the order the rows were entered. IN adds, OUT subtracts, ADJUST is already a
+   * signed delta.
+   */
+  private async stockBalancesAt(at: Date): Promise<Map<string, number>> {
     const rows = await this.prisma.$queryRaw<{ materialId: string; balance: string }[]>(Prisma.sql`
-      SELECT DISTINCT ON ("materialId") "materialId", "balance"
+      SELECT "materialId",
+             SUM(CASE WHEN "direction" = 'OUT' THEN -"quantity" ELSE "quantity" END)::text AS "balance"
       FROM "StockMovement"
       WHERE "date" < ${at}
-      ORDER BY "materialId", "date" DESC, "createdAt" DESC
+      GROUP BY "materialId"
     `);
-    return rows.reduce((sum, r) => sum + Number(r.balance) * (unitCost.get(r.materialId) ?? 0), 0);
+    return new Map(rows.map((r) => [r.materialId, Number(r.balance)]));
+  }
+
+  /** Value of a set of stock balances, each material at its current purchase rate (no
+   *  batch/FIFO cost history is tracked, so this is an approximation). */
+  private stockValue(balances: Map<string, number>, unitCost: Map<string, number>): number {
+    let sum = 0;
+    for (const [materialId, qty] of balances) sum += qty * (unitCost.get(materialId) ?? 0);
+    return sum;
   }
 
   private async periodFinancials(rangeStart: Date, rangeEnd: Date, unitCost: Map<string, number>) {
     const dateFilter = { date: { gte: rangeStart, lt: rangeEnd } };
-    const [sales, purchases, expenses, openingStockValue, closingStockValue] = await Promise.all([
+    const [sales, purchases, expenses, openingBalances, closingBalances] = await Promise.all([
       this.prisma.sale.aggregate({ _sum: { total: true }, where: { ...dateFilter, status: TxnStatus.CONFIRMED } }),
       this.prisma.purchase.aggregate({ _sum: { total: true }, where: { ...dateFilter, status: TxnStatus.CONFIRMED } }),
       this.prisma.expense.aggregate({ _sum: { amount: true }, where: { ...dateFilter, deletedAt: null } }),
-      this.stockValueAt(rangeStart, unitCost),
-      this.stockValueAt(rangeEnd, unitCost),
+      this.stockBalancesAt(rangeStart),
+      this.stockBalancesAt(rangeEnd),
     ]);
 
     const revenue = round2(Number(sales._sum.total ?? 0));
     const purchaseCost = round2(Number(purchases._sum.total ?? 0));
     const operatingExpenses = round2(Number(expenses._sum.amount ?? 0));
-    const opening = round2(openingStockValue);
-    const closing = round2(closingStockValue);
+    const opening = round2(this.stockValue(openingBalances, unitCost));
+    const closing = round2(this.stockValue(closingBalances, unitCost));
     const cogs = round2(opening + purchaseCost - closing);
     const grossProfit = round2(revenue - cogs);
     const netProfit = round2(grossProfit - operatingExpenses);
@@ -176,6 +194,7 @@ export class ReportsService {
       cogs,
       grossProfit,
       netProfit,
+      closingBalances,
     };
   }
 
@@ -203,19 +222,34 @@ export class ReportsService {
 
     const materials = await this.prisma.material.findMany({
       where: { isActive: true },
-      select: { id: true, purchaseRate: true, defaultRate: true },
+      select: { id: true, name: true, unit: true, purchaseRate: true, defaultRate: true },
     });
-    const unitCost = new Map(materials.map((m) => [m.id, Number(m.purchaseRate ?? m.defaultRate ?? 0)]));
+    // A purchase rate of 0 means "not set" (it would cost the material at nothing and show a
+    // 100% margin), so fall through to the default rate like a missing one.
+    const unitCost = new Map(
+      materials.map((m) => [m.id, Number(m.purchaseRate) || Number(m.defaultRate) || 0]),
+    );
 
     const { prevFrom, prevTo } = this.shiftPeriod(from, to);
     const { start: prevStart, end: prevEnd } = this.range(prevFrom, prevTo);
 
-    const [current, previous, expenseRows, materialRows] = await Promise.all([
+    const [currentFull, previousFull, expenseRows, materialRows] = await Promise.all([
       this.periodFinancials(start, end, unitCost),
       this.periodFinancials(prevStart, prevEnd, unitCost),
       this.expenseBreakdown(from, to),
       this.materialBreakdown(from, to),
     ]);
+
+    const { closingBalances, ...current } = currentFull;
+    const { closingBalances: _prevBalances, ...previous } = previousFull;
+
+    // Materials whose recorded sales exceed recorded purchases at the end of the period. Their
+    // cost is still counted (at the current rate), but it is an estimate until the matching
+    // purchases are entered - the report shows this so a loss/profit isn't misread.
+    const negativeStock = materials
+      .map((m) => ({ name: m.name, unit: m.unit, balance: round3(closingBalances.get(m.id) ?? 0) }))
+      .filter((m) => m.balance < 0)
+      .sort((a, b) => a.balance - b.balance);
 
     const materialMargins = materialRows
       .filter((m) => m.soldQty > 0)
@@ -246,6 +280,7 @@ export class ReportsService {
       netMarginPct,
       expenseBreakdown: expenseRows,
       materialMargins,
+      negativeStock,
       previousPeriod: { from: prevFrom, to: prevTo, ...previous },
     };
   }
