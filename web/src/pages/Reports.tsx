@@ -41,6 +41,11 @@ interface MaterialMargin {
   margin: number;
   marginPct: number;
 }
+interface NegativeStock {
+  name: string;
+  unit: string;
+  balance: number;
+}
 interface ProfitLoss extends PeriodFinancials {
   from: string;
   to: string;
@@ -48,6 +53,7 @@ interface ProfitLoss extends PeriodFinancials {
   netMarginPct: number;
   expenseBreakdown: ExpenseRow[];
   materialMargins: MaterialMargin[];
+  negativeStock?: NegativeStock[];
   previousPeriod: PeriodFinancials & { from: string; to: string };
 }
 
@@ -194,6 +200,24 @@ export default function Reports() {
             COGS = opening stock + purchases - closing stock, with stock valued at each material's current purchase rate
             (no batch/FIFO cost history is tracked, so this is an approximation, not exact historical costing).
           </div>
+
+          {!!pnl?.negativeStock?.length && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: '10px 12px',
+                borderRadius: 8,
+                fontSize: 13,
+                background: 'var(--gold-soft)',
+                color: 'var(--gold-dark)',
+              }}
+            >
+              <b>Some sales have no matching purchase entered yet.</b> At the end of this period these materials show
+              more sold than bought:{' '}
+              {pnl.negativeStock.map((m) => `${m.name} (${qty(m.balance)} ${m.unit})`).join(', ')}. Their cost is
+              estimated at the current rate, so this profit is provisional until those purchases are entered.
+            </div>
+          )}
 
           {!!pnl?.materialMargins.length && (
             <>
