@@ -20,76 +20,71 @@ export interface DayCloseRow {
 export class DayCloseService {
   constructor(private prisma: PrismaService) {}
 
-  /** Compute per-material opening/in/out/closing for a business date (no write). */
+  /**
+   * Compute per-material opening/in/out/closing for a business date (no write).
+   *
+   * Opening and closing are summed from movement quantities by date rather than read
+   * from each movement's stored `balance`. That stored value is the running stock at
+   * the moment the movement was ENTERED, so a purchase entered after that day's sales
+   * (the yard's normal workflow) leaves the earlier rows' balances stale and never
+   * corrected. Summing by date gives the same answer regardless of entry order.
+   */
   async compute(dateStr: string): Promise<DayCloseRow[]> {
     const { start, end } = istDayRange(dateStr);
-    const materials = await this.prisma.material.findMany({
-      where: { isActive: true },
-      orderBy: { name: 'asc' },
-    });
-
-    return Promise.all(
-      materials.map(async (m) => {
-        // Opening = balance carried in from before the day.
-        const before = await this.prisma.stockMovement.findFirst({
-          where: { materialId: m.id, date: { lt: start } },
-          orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-        });
-        const opening = before ? Number(before.balance) : 0;
-
-        // Movements within the day.
-        const [inAgg, outAgg, adjustAgg, lastOfDay] = await Promise.all([
-          this.prisma.stockMovement.aggregate({
-            _sum: { quantity: true },
-            where: {
-              materialId: m.id,
-              date: { gte: start, lt: end },
-              direction: StockDirection.IN,
-            },
-          }),
-          this.prisma.stockMovement.aggregate({
-            _sum: { quantity: true },
-            where: {
-              materialId: m.id,
-              date: { gte: start, lt: end },
-              direction: StockDirection.OUT,
-            },
-          }),
-          // Manual corrections (StockService.adjust/undoAdjustment) — kept separate from
-          // totalIn/totalOut since they aren't a real purchase/sale/production movement.
-          this.prisma.stockMovement.aggregate({
-            _sum: { quantity: true },
-            where: {
-              materialId: m.id,
-              date: { gte: start, lt: end },
-              direction: StockDirection.ADJUST,
-            },
-          }),
-          this.prisma.stockMovement.findFirst({
-            where: { materialId: m.id, date: { gte: start, lt: end } },
-            orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-          }),
-        ]);
-
-        const totalIn = round3(Number(inAgg._sum.quantity ?? 0));
-        const totalOut = round3(Number(outAgg._sum.quantity ?? 0));
-        // ADJUST movements store a signed delta already, so this sum is net for the day.
-        const adjustment = round3(Number(adjustAgg._sum.quantity ?? 0));
-        // Closing reflects the true end-of-day balance — opening + in - out + adjustment.
-        const closing = lastOfDay ? Number(lastOfDay.balance) : opening;
-
-        return {
-          materialId: m.id,
-          name: m.name,
-          unit: m.unit,
-          opening,
-          totalIn,
-          totalOut,
-          adjustment,
-          closing,
-        };
+    const [materials, beforeDay, duringDay] = await Promise.all([
+      this.prisma.material.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
       }),
-    );
+      this.prisma.stockMovement.groupBy({
+        by: ['materialId', 'direction'],
+        where: { date: { lt: start } },
+        _sum: { quantity: true },
+      }),
+      this.prisma.stockMovement.groupBy({
+        by: ['materialId', 'direction'],
+        where: { date: { gte: start, lt: end } },
+        _sum: { quantity: true },
+      }),
+    ]);
+
+    // materialId -> direction -> summed quantity
+    const index = (groups: typeof beforeDay) => {
+      const map = new Map<string, Partial<Record<StockDirection, number>>>();
+      for (const g of groups) {
+        const byDir = map.get(g.materialId) ?? {};
+        byDir[g.direction] = Number(g._sum.quantity ?? 0);
+        map.set(g.materialId, byDir);
+      }
+      return map;
+    };
+    const before = index(beforeDay);
+    const during = index(duringDay);
+
+    return materials.map((m) => {
+      // IN/OUT quantities are stored as positive magnitudes; ADJUST is already signed.
+      const b = before.get(m.id) ?? {};
+      const opening = round3((b.IN ?? 0) - (b.OUT ?? 0) + (b.ADJUST ?? 0));
+
+      const d = during.get(m.id) ?? {};
+      const totalIn = round3(d.IN ?? 0);
+      const totalOut = round3(d.OUT ?? 0);
+      // Manual corrections (StockService.adjust/undoAdjustment) — kept separate from
+      // totalIn/totalOut since they aren't a real purchase/sale/production movement.
+      const adjustment = round3(d.ADJUST ?? 0);
+      const closing = round3(opening + totalIn - totalOut + adjustment);
+
+      return {
+        materialId: m.id,
+        name: m.name,
+        unit: m.unit,
+        opening,
+        totalIn,
+        totalOut,
+        adjustment,
+        closing,
+      };
+    });
   }
 
   /** Compute and lock the snapshot for a business date. Idempotent (upsert). */
