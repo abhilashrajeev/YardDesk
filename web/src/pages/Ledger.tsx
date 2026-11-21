@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, apiError } from '../api/client';
-import { useFetch, money, fmtDate } from '../lib/hooks';
+import { useFetch, money, fmtDate, todayIST } from '../lib/hooks';
 import { downloadCsv } from '../lib/csv';
 import { downloadLedgerPdf } from '../lib/ledgerPdf';
 import { Icon } from '../components/Icon';
@@ -34,52 +34,58 @@ interface LedgerResponse {
   openingBalance: number;
 }
 
-/** A payment that auto-split across several bills posts one ledger entry per bill, all
- *  sharing the same refId — merge those back into a single line showing the full amount
- *  actually entered, since that's what the user typed and expects to see, not the
- *  behind-the-scenes per-bill breakdown. */
-function mergePaymentSplits(entries: LedgerEntryRow[]): LedgerEntryRow[] {
-  const merged: LedgerEntryRow[] = [];
-  const indexByRefId = new Map<string, number>();
-  for (const e of entries) {
-    if (e.refType === 'PAYMENT' && e.refId) {
-      const idx = indexByRefId.get(e.refId);
-      if (idx !== undefined) {
-        const prev = merged[idx];
-        merged[idx] = {
-          ...prev,
-          debit: String(Number(prev.debit) + Number(e.debit)),
-          credit: String(Number(prev.credit) + Number(e.credit)),
-          balance: e.balance,
-        };
-        continue;
-      }
-      indexByRefId.set(e.refId, merged.length);
-    }
-    merged.push({ ...e });
-  }
-  return merged;
+/** The IST business date ('YYYY-MM-DD') of an entry's timestamp. Business dates are
+ *  stored at UTC midnight, which this leaves unchanged; a raw timestamp (e.g. an older
+ *  entry stamped at the moment it was posted) lands on its correct IST day instead of
+ *  the UTC one, which is a day early for anything posted between 00:00 and 05:30 IST. */
+function istDateKey(iso: string) {
+  return new Date(Date.parse(iso) + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-/** A voided payment leaves two lines behind — the original credit/debit and its later
- *  reversal — which net to zero but still clutter the ledger. Once a payment's most
- *  recent entry for its refId is the reversal (i.e. nothing was re-entered after it,
- *  unlike an edit), drop both lines; a real user shouldn't have to read past dead
- *  entries to see what's actually outstanding. */
-function hideVoidedPayments(entries: LedgerEntryRow[]): LedgerEntryRow[] {
-  const byRefId = new Map<string, LedgerEntryRow[]>();
+/** 'SALE_REVERSAL' -> 'SALE', 'PAYMENT_RESTORE' -> 'PAYMENT', 'SALE' -> 'SALE'. */
+function baseType(refType: string) {
+  return refType.replace(/_(REVERSAL|RESTORE)$/, '');
+}
+
+/** Show every transaction once, as it stands now — never the bookkeeping behind an edit.
+ *  Editing or deleting a sale, purchase or payment posts an undo of the old entry (and,
+ *  for an edit, a fresh one); restoring posts a redo. All of these share the record's
+ *  refId, so they're netted into a single line:
+ *  - an edited bill shows once, with its current amount and date;
+ *  - a deleted bill or voided payment nets to zero and disappears;
+ *  - a restored bill shows once, as the bill;
+ *  - a payment auto-split across several bills (its splits share one refId) reads as the
+ *    single amount the user entered.
+ *  Working from the net per refId keeps the figures exact even in odd cases, e.g. one
+ *  split of a batch payment voided — that just shows the remaining amount. */
+function collapseTransactions(entries: LedgerEntryRow[]): LedgerEntryRow[] {
+  const key = (e: LedgerEntryRow) => (e.refId && e.refType ? `${baseType(e.refType)}:${e.refId}` : null);
+  const net = new Map<string, number>();
+  const current = new Map<string, LedgerEntryRow>(); // latest original/edited entry
+  const kept: LedgerEntryRow[] = [];
   for (const e of entries) {
-    if ((e.refType === 'PAYMENT' || e.refType === 'PAYMENT_REVERSAL') && e.refId) {
-      const list = byRefId.get(e.refId) ?? [];
-      list.push(e);
-      byRefId.set(e.refId, list);
-    }
+    const k = key(e);
+    if (!k) { kept.push(e); continue; }
+    if (!net.has(k)) kept.push(e); // first occurrence holds the row's position
+    net.set(k, (net.get(k) ?? 0) + Number(e.credit) - Number(e.debit));
+    if (e.refType === baseType(e.refType!)) current.set(k, e);
   }
-  const voidedRefIds = new Set<string>();
-  for (const [refId, list] of byRefId) {
-    if (list[list.length - 1].refType === 'PAYMENT_REVERSAL') voidedRefIds.add(refId);
-  }
-  return entries.filter((e) => !(e.refId && voidedRefIds.has(e.refId) && byRefId.has(e.refId)));
+  return kept.flatMap((e) => {
+    const k = key(e);
+    if (!k) return [e];
+    const s = Math.round((net.get(k) ?? 0) * 100) / 100;
+    if (Math.abs(s) < 0.005) return [];
+    const base = current.get(k) ?? e;
+    return [{
+      ...base,
+      id: e.id,
+      refType: baseType(base.refType!),
+      // The edit marker was there to explain the reversal rows; with those gone it's noise.
+      description: base.description.replace(/\s*\(edited\)$/, ''),
+      credit: String(s > 0 ? s : 0),
+      debit: String(s < 0 ? -s : 0),
+    }];
+  });
 }
 
 /** Entries come back ordered by when they were POSTED, not by their transaction date —
@@ -93,7 +99,7 @@ function sortByDateAndRebalance(
   partyType: 'CUSTOMER' | 'VENDOR',
 ): LedgerEntryRow[] {
   const withIndex = entries.map((e, i) => ({ e, i }));
-  withIndex.sort((a, b) => a.e.date.localeCompare(b.e.date) || a.i - b.i);
+  withIndex.sort((a, b) => istDateKey(a.e.date).localeCompare(istDateKey(b.e.date)) || a.i - b.i);
 
   let running = opening;
   return withIndex.map(({ e }) => {
@@ -163,7 +169,7 @@ export default function Ledger() {
   const [payMode, setPayMode] = useState<PaymentMode>('CASH');
   const [payAmount, setPayAmount] = useState(0);
   const [payReference, setPayReference] = useState('');
-  const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10));
+  const [payDate, setPayDate] = useState(todayIST());
   const [payAutoApply, setPayAutoApply] = useState(true);
   const [paySaving, setPaySaving] = useState(false);
   const [payError, setPayError] = useState('');
@@ -172,7 +178,7 @@ export default function Ledger() {
     setPayMode('CASH');
     setPayAmount(0);
     setPayReference('');
-    setPayDate(new Date().toISOString().slice(0, 10));
+    setPayDate(todayIST());
     setPayAutoApply(true);
     setPayError('');
     setShowAddPayment(true);
@@ -207,19 +213,24 @@ export default function Ledger() {
   const { from, to } = periodRange(period);
   const allEntries = ledger?.entries ?? [];
   const filtered = allEntries.filter((e) => {
-    const d = e.date.slice(0, 10);
+    const d = istDateKey(e.date);
     if (from && d < from) return false;
     if (to && d > to) return false;
     return true;
   });
 
-  // Balance immediately before the first shown entry — the account's true opening
-  // balance when nothing's filtered out, or the running balance as of the cutoff otherwise.
-  const firstShownIndex = filtered.length ? allEntries.indexOf(filtered[0]) : allEntries.length;
-  const openingForRange = firstShownIndex > 0 ? Number(allEntries[firstShownIndex - 1].balance) : (ledger?.openingBalance ?? 0);
-  // The true running balance always comes from the raw (unfiltered-for-display) entries —
-  // hiding a voided pair from view must never change what the account actually closes at.
-  const closingBalance = filtered.length ? Number(filtered[filtered.length - 1].balance) : openingForRange;
+  // Opening/closing are summed from each entry's amount BY DATE — never read from the
+  // stored running `balance`, which is the balance at the moment an entry was posted.
+  // Entries are routinely posted out of date order (sales first, purchases later), so the
+  // stored value at a period's edge counts entries from other dates and reads wrong.
+  const signed = (e: LedgerEntryRow) =>
+    partyType === 'CUSTOMER' ? Number(e.debit) - Number(e.credit) : Number(e.credit) - Number(e.debit);
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const openingForRange = round2(
+    (ledger?.openingBalance ?? 0) +
+      (from ? allEntries.filter((e) => istDateKey(e.date) < from).reduce((s, e) => s + signed(e), 0) : 0),
+  );
+  const closingBalance = round2(openingForRange + filtered.reduce((s, e) => s + signed(e), 0));
   const balanceColor = closingBalance > 0 ? 'var(--red)' : closingBalance < 0 ? 'var(--green)' : 'var(--text-2)';
   const balanceStatus = closingBalance > 0
     ? (partyType === 'CUSTOMER' ? 'Receivable — they owe us' : 'Payable — we owe them')
@@ -227,15 +238,9 @@ export default function Ledger() {
       ? 'Advance / credit'
       : 'Settled';
 
-  // What's actually displayed (table, CSV, PDF) — same figures, but a payment that
-  // auto-split across several bills reads as the one line the user actually entered,
-  // a voided payment's dead original+reversal pair is dropped rather than shown, and
-  // everything reads in true transaction-date order rather than entry-posting order.
-  const displayEntries = sortByDateAndRebalance(
-    hideVoidedPayments(mergePaymentSplits(filtered)),
-    openingForRange,
-    partyType,
-  );
+  // What's actually displayed (table, CSV, PDF) — same net figures, with each transaction
+  // as one line in its current state, in true transaction-date order.
+  const displayEntries = sortByDateAndRebalance(collapseTransactions(filtered), openingForRange, partyType);
   // The Total Debit/Credit cards must match what's actually listed below them.
   const totalDebit = displayEntries.reduce((s, e) => s + Number(e.debit), 0);
   const totalCredit = displayEntries.reduce((s, e) => s + Number(e.credit), 0);
@@ -264,39 +269,16 @@ export default function Ledger() {
   function downloadPdf() {
     if (!ledger) return;
 
-    // Group by the underlying record so an edited/voided entry only appears once, as its
-    // final state — a customer/vendor statement shouldn't show the correction noise, just
-    // what's actually owed. A group whose latest entry is itself a reversal means the
-    // transaction was voided with nothing to replace it, so the whole group is dropped.
-    const groups = new Map<string, LedgerEntryRow[]>();
-    const ungrouped: LedgerEntryRow[] = [];
-    for (const e of displayEntries) {
-      if (!e.refId) { ungrouped.push(e); continue; }
-      const list = groups.get(e.refId) ?? [];
-      list.push(e);
-      groups.set(e.refId, list);
-    }
-    const cleaned = [
-      ...ungrouped,
-      ...Array.from(groups.values())
-        .map((g) => g[g.length - 1])
-        .filter((e) => !e.refType?.endsWith('_REVERSAL')),
-    ];
-
-    // A statement reads naturally in transaction-date order, not entry-creation order —
-    // re-sort (same-date entries keep their original relative order) and recompute the
-    // running balance to match, since the stored `balance` field is only meaningful in
-    // original creation-order sequence.
-    const withIndex = cleaned.map((e, i) => ({ e, i }));
-    withIndex.sort((a, b) => a.e.date.localeCompare(b.e.date) || a.i - b.i);
-
-    let running = openingForRange;
-    const entries = withIndex.map(({ e }) => {
-      const debit = Number(e.debit);
-      const credit = Number(e.credit);
-      running = partyType === 'CUSTOMER' ? running + debit - credit : running + credit - debit;
-      return { date: e.date, voucher: voucherLabel(e.refType), description: e.description, debit, credit, balance: running };
-    });
+    // Exactly what's on screen: each transaction once in its current state (no edit or
+    // delete bookkeeping), in date order, with the running balance already recomputed.
+    const entries = displayEntries.map((e) => ({
+      date: e.date,
+      voucher: voucherLabel(e.refType),
+      description: e.description,
+      debit: Number(e.debit),
+      credit: Number(e.credit),
+      balance: Number(e.balance),
+    }));
 
     downloadLedgerPdf({
       partyName: ledger.name,
@@ -505,7 +487,7 @@ export default function Ledger() {
               </div>
               <div>
                 <label>Date</label>
-                <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+                <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} max={todayIST()} />
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, paddingBottom: 9 }}>
                 <input type="checkbox" style={{ width: 'auto' }} checked={payAutoApply} onChange={(e) => setPayAutoApply(e.target.checked)} />

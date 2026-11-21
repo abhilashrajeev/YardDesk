@@ -12,7 +12,86 @@ interface Movement {
   quantity: string;
   balance: string;
   refType?: string | null;
+  refId?: string | null;
   material: { name: string; unit: string };
+}
+
+interface HistoryRow {
+  id: string;
+  date: string;
+  type: string;
+  material: { name: string; unit: string };
+  /** Signed: positive added stock, negative removed it. */
+  qty: number;
+  /** Stock after this row. */
+  balance: number;
+  /** Set only for a manual adjustment that can still be undone. */
+  undoableId?: string;
+}
+
+const TYPE_LABEL: Record<string, string> = {
+  SALE: 'Sale',
+  PURCHASE: 'Purchase',
+  PRODUCTION: 'Mixing',
+  ADJUSTMENT: 'Adjustment',
+};
+
+/**
+ * Turn raw stock movements (newest date first) into one row per transaction, in its
+ * current state. Editing or deleting a sale/purchase/mixing batch posts an undo of the
+ * old movement (and, for an edit, a new one); restoring posts a redo; undoing a manual
+ * adjustment posts its opposite. Those all net out under the record they belong to, so
+ * an edited bill shows once at its current quantity and a deleted or undone one vanishes.
+ *
+ * "Stock after" is derived backwards from the material's current stock rather than read
+ * from each movement's stored balance — that stored figure is the stock at the moment of
+ * ENTRY, which is wrong whenever entries are made out of date order (sales first,
+ * purchases later). Works because the list is a newest-first run back from today.
+ */
+function toHistory(movements: Movement[], currentStock: number): HistoryRow[] {
+  const signed = (m: Movement) => (m.direction === 'OUT' ? -1 : 1) * Number(m.quantity);
+  const keyOf = (m: Movement) => {
+    if (m.refType === 'ADJUSTMENT') return `ADJUSTMENT:${m.id}`;
+    if (m.refType === 'ADJUSTMENT_UNDO') return `ADJUSTMENT:${m.refId}`;
+    if (!m.refType || !m.refId) return `RAW:${m.id}`;
+    // SALE_REVERSAL / PURCHASE_RESTORE / PRODUCTION_UNDO / PRODUCTION_EDIT_UNDO -> base type.
+    const base = m.refType.replace(/_(REVERSAL|RESTORE|EDIT_UNDO|UNDO)$/, '');
+    return `${base}:${m.refId}`;
+  };
+
+  const groups = new Map<string, { first: Movement; net: number; undone: boolean }>();
+  const order: string[] = [];
+  for (const m of movements) {
+    const k = keyOf(m);
+    const g = groups.get(k);
+    if (g) {
+      g.net += signed(m);
+      if (m.refType === 'ADJUSTMENT_UNDO') g.undone = true;
+    } else {
+      groups.set(k, { first: m, net: signed(m), undone: m.refType === 'ADJUSTMENT_UNDO' });
+      order.push(k);
+    }
+  }
+
+  let after = currentStock;
+  const rows: HistoryRow[] = [];
+  for (const k of order) {
+    const g = groups.get(k)!;
+    const qty = Math.round(g.net * 1000) / 1000;
+    if (Math.abs(qty) < 0.0005) continue;
+    const base = k.slice(0, k.indexOf(':'));
+    rows.push({
+      id: g.first.id,
+      date: g.first.date,
+      type: TYPE_LABEL[base] ?? base,
+      material: g.first.material,
+      qty,
+      balance: Math.round(after * 1000) / 1000,
+      undoableId: base === 'ADJUSTMENT' && !g.undone ? k.slice(k.indexOf(':') + 1) : undefined,
+    });
+    after -= qty;
+  }
+  return rows;
 }
 
 export default function Inventory() {
@@ -24,6 +103,9 @@ export default function Inventory() {
   const { data: movements, loading: movementsLoading, refetch: refetchMovements } = useFetch<Movement[]>(
     selected ? `/inventory/movements?materialId=${selected}` : null,
   );
+
+  const selectedStock = Number(stock?.find((m) => m.id === selected)?.currentStock ?? 0);
+  const history = movements ? toHistory(movements, selectedStock) : null;
 
   const [adjustingId, setAdjustingId] = useState<string | null>(null);
   const [adjustQty, setAdjustQty] = useState('');
@@ -170,26 +252,24 @@ export default function Inventory() {
                   <th>Type</th>
                   <th>Ref</th>
                   <th className="num">Qty</th>
-                  <th className="num">Balance</th>
+                  <th className="num">Stock after</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {movements?.map((m) => (
-                  <tr key={m.id}>
-                    <td>{fmtDate(m.date)}</td>
-                    <td>{m.material.name}</td>
+                {history?.map((r) => (
+                  <tr key={r.id}>
+                    <td>{fmtDate(r.date)}</td>
+                    <td>{r.material.name}</td>
                     <td>
-                      <span className={m.direction === 'IN' ? 'pill pos' : m.direction === 'OUT' ? 'pill neg' : ''}>
-                        {m.direction}
-                      </span>
+                      <span className={r.qty > 0 ? 'pill pos' : 'pill neg'}>{r.qty > 0 ? 'IN' : 'OUT'}</span>
                     </td>
-                    <td className="muted">{m.refType}</td>
-                    <td className="num">{qty(m.quantity)}</td>
-                    <td className="num">{qty(m.balance)}</td>
+                    <td className="muted">{r.type}</td>
+                    <td className="num">{qty(Math.abs(r.qty))}</td>
+                    <td className="num">{qty(r.balance)}</td>
                     <td className="right">
-                      {canAdjust && m.refType === 'ADJUSTMENT' && (
-                        <button className="btn sm ghost" onClick={() => undoAdjustment(m.id)}>Undo</button>
+                      {canAdjust && r.undoableId && (
+                        <button className="btn sm ghost" onClick={() => undoAdjustment(r.undoableId!)}>Undo</button>
                       )}
                     </td>
                   </tr>

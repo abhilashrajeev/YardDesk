@@ -88,7 +88,10 @@ export class StockService {
   listMovements(materialId?: string, limit = 100) {
     return this.prisma.stockMovement.findMany({
       where: materialId ? { materialId } : {},
-      orderBy: { createdAt: 'desc' },
+      // Newest TRANSACTION date first (not newest-entered): the history then reads in
+      // date order and forms an unbroken run back from today, which is what lets the
+      // page derive a correct "stock after" figure for each row from the current stock.
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       take: limit,
       include: { material: { select: { name: true, unit: true } } },
     });

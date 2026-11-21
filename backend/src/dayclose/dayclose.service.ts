@@ -5,6 +5,9 @@ import { istDayRange, businessDateValue } from '../common/date';
 import { round3 } from '../common/money';
 import { TXN_OPTIONS } from '../common/db';
 
+/** Movements that undo an earlier one (posted when a record is edited or deleted). */
+const UNDO_REF_TYPES = new Set(['SALE_REVERSAL', 'PURCHASE_REVERSAL', 'PRODUCTION_UNDO', 'PRODUCTION_EDIT_UNDO']);
+
 export interface DayCloseRow {
   materialId: string;
   name: string;
@@ -42,11 +45,30 @@ export class DayCloseService {
         _sum: { quantity: true },
       }),
       this.prisma.stockMovement.groupBy({
-        by: ['materialId', 'direction'],
+        by: ['materialId', 'direction', 'refType'],
         where: { date: { gte: start, lt: end } },
         _sum: { quantity: true },
       }),
     ]);
+
+    // The day's real In/Out. Editing or deleting a sale, purchase or production batch
+    // first posts an undo movement in the opposite direction (a sale's undo is an IN).
+    // Counted as-is, every edited bill inflates both columns — an edited 350 cft sale
+    // read as In 350 / Out 700 though nothing arrived. So an undo is taken off the
+    // column it undoes instead. Restores are a genuine re-do and count normally.
+    const dayInOut = new Map<string, { totalIn: number; totalOut: number }>();
+    for (const g of duringDay) {
+      if (g.direction === StockDirection.ADJUST) continue;
+      const qty = Number(g._sum.quantity ?? 0);
+      const isUndo = !!g.refType && UNDO_REF_TYPES.has(g.refType);
+      const t = dayInOut.get(g.materialId) ?? { totalIn: 0, totalOut: 0 };
+      if (g.direction === StockDirection.IN) {
+        if (isUndo) t.totalOut -= qty; else t.totalIn += qty;
+      } else {
+        if (isUndo) t.totalIn -= qty; else t.totalOut += qty;
+      }
+      dayInOut.set(g.materialId, t);
+    }
 
     // materialId -> direction -> summed quantity
     const index = (groups: typeof beforeDay) => {
@@ -59,7 +81,13 @@ export class DayCloseService {
       return map;
     };
     const before = index(beforeDay);
-    const during = index(duringDay);
+    // Per-direction totals still drive the day's ADJUST figure (refType ignored here).
+    const during = new Map<string, Partial<Record<StockDirection, number>>>();
+    for (const g of duringDay) {
+      const byDir = during.get(g.materialId) ?? {};
+      byDir[g.direction] = (byDir[g.direction] ?? 0) + Number(g._sum.quantity ?? 0);
+      during.set(g.materialId, byDir);
+    }
 
     return materials.map((m) => {
       // IN/OUT quantities are stored as positive magnitudes; ADJUST is already signed.
@@ -67,8 +95,9 @@ export class DayCloseService {
       const opening = round3((b.IN ?? 0) - (b.OUT ?? 0) + (b.ADJUST ?? 0));
 
       const d = during.get(m.id) ?? {};
-      const totalIn = round3(d.IN ?? 0);
-      const totalOut = round3(d.OUT ?? 0);
+      const io = dayInOut.get(m.id) ?? { totalIn: 0, totalOut: 0 };
+      const totalIn = round3(io.totalIn);
+      const totalOut = round3(io.totalOut);
       // Manual corrections (StockService.adjust/undoAdjustment) — kept separate from
       // totalIn/totalOut since they aren't a real purchase/sale/production movement.
       const adjustment = round3(d.ADJUST ?? 0);
