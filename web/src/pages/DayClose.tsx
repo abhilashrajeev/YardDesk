@@ -24,6 +24,16 @@ export default function DayClose() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Materials are stocked in different units (CFT, BAG, NOS), so a single grand total
+  // would mix incompatible quantities — total In/Out per unit instead.
+  const totalsByUnit = new Map<string, { totalIn: number; totalOut: number }>();
+  for (const r of rows ?? []) {
+    const t = totalsByUnit.get(r.unit) ?? { totalIn: 0, totalOut: 0 };
+    t.totalIn += r.totalIn;
+    t.totalOut += r.totalOut;
+    totalsByUnit.set(r.unit, t);
+  }
+
   async function lock() {
     setSaving(true);
     setError('');
@@ -88,6 +98,21 @@ export default function DayClose() {
                 </tr>
               )}
             </tbody>
+            {totalsByUnit.size > 0 && (
+              <tfoot>
+                {Array.from(totalsByUnit.entries()).map(([unit, t], i) => (
+                  <tr key={unit} style={{ fontWeight: 700, borderTop: i === 0 ? '2px solid var(--border)' : undefined }}>
+                    <td>Total</td>
+                    <td className="muted">{unit}</td>
+                    <td></td>
+                    <td className="num" style={{ color: 'var(--green)' }}>{qty(t.totalIn)}</td>
+                    <td className="num" style={{ color: 'var(--red)' }}>{qty(t.totalOut)}</td>
+                    <td></td>
+                    <td></td>
+                  </tr>
+                ))}
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
