@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { AuditAction, PartyType, PaymentDirection, Prisma, TxnStatus } from '@prisma/client';
+import { AuditAction, PartyType, PaymentDirection, PaymentMode, Prisma, TxnStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LedgerService } from './ledger.service';
 import { AuditService } from '../audit/audit.service';
@@ -7,6 +7,17 @@ import { CreatePaymentDto, UpdatePaymentDto, AllocatePaymentDto } from './paymen
 import { round2 } from '../common/money';
 import { TXN_OPTIONS, isUniqueViolation } from '../common/db';
 import { istDayRange } from '../common/date';
+
+/** The fields of a Payment the ledger helpers below need. */
+type PaymentRef = {
+  id: string;
+  partyType: PartyType;
+  customerId: string | null;
+  vendorId: string | null;
+  amount: unknown;
+  mode: PaymentMode;
+  date: Date;
+};
 
 @Injectable()
 export class PaymentsService {
@@ -229,30 +240,50 @@ export class PaymentsService {
     return payment;
   }
 
-  private async reverseLedger(tx: Prisma.TransactionClient, payment: {
-    id: string; partyType: PartyType; customerId: string | null; vendorId: string | null;
-    amount: unknown; mode: string;
-  }) {
-    // A customer payment credited their ledger; reversing it debits back the same amount (and vice-versa for vendors).
+  /**
+   * Post a payment's effect on its party's ledger: 'apply' / 'restore' record the money
+   * moving (customer credited, vendor debited); 'reverse' cancels that out. Always dated
+   * the payment's own date — a correction made today to a payment from last week belongs
+   * to last week, or every date-based view (ledger periods, day close) reads it wrong.
+   */
+  private async postLedger(
+    tx: Prisma.TransactionClient,
+    payment: PaymentRef,
+    kind: 'apply' | 'reverse' | 'restore',
+    description: string,
+  ) {
+    const reverse = kind === 'reverse';
+    const refType = kind === 'apply' ? 'PAYMENT' : kind === 'reverse' ? 'PAYMENT_REVERSAL' : 'PAYMENT_RESTORE';
+    const amount = Number(payment.amount);
     if (payment.partyType === PartyType.CUSTOMER) {
       await this.ledger.post(tx, {
         partyType: PartyType.CUSTOMER,
         customerId: payment.customerId!,
-        description: `Reversal of payment (${payment.mode})`,
-        debit: Number(payment.amount),
-        refType: 'PAYMENT_REVERSAL',
+        description,
+        ...(reverse ? { debit: amount } : { credit: amount }),
+        refType,
         refId: payment.id,
+        date: payment.date,
       });
     } else {
       await this.ledger.post(tx, {
         partyType: PartyType.VENDOR,
         vendorId: payment.vendorId!,
-        description: `Reversal of payment (${payment.mode})`,
-        credit: Number(payment.amount),
-        refType: 'PAYMENT_REVERSAL',
+        description,
+        ...(reverse ? { credit: amount } : { debit: amount }),
+        refType,
         refId: payment.id,
+        date: payment.date,
       });
     }
+  }
+
+  private reverseLedger(tx: Prisma.TransactionClient, payment: PaymentRef) {
+    return this.postLedger(tx, payment, 'reverse', `Reversal of payment (${payment.mode})`);
+  }
+
+  private editedDescription(partyType: PartyType, mode: string) {
+    return `Payment ${partyType === PartyType.CUSTOMER ? 'received' : 'made'} (${mode}) (edited)`;
   }
 
   /** Edit a payment: reverses its old ledger effect, then reapplies with the new amount/mode. */
@@ -265,6 +296,8 @@ export class PaymentsService {
     const mode = dto.mode ?? existing.mode;
 
     return this.prisma.$transaction(async (tx) => {
+      // The reversal lands on the payment's OLD date and the re-post on its new one, so a
+      // date change moves the money between days instead of leaving it on the old one.
       await this.reverseLedger(tx, existing);
 
       const payment = await tx.payment.update({
@@ -278,25 +311,7 @@ export class PaymentsService {
         },
       });
 
-      if (existing.partyType === PartyType.CUSTOMER) {
-        await this.ledger.post(tx, {
-          partyType: PartyType.CUSTOMER,
-          customerId: existing.customerId!,
-          description: `Payment received (${mode}) (edited)`,
-          credit: amount,
-          refType: 'PAYMENT',
-          refId: payment.id,
-        });
-      } else {
-        await this.ledger.post(tx, {
-          partyType: PartyType.VENDOR,
-          vendorId: existing.vendorId!,
-          description: `Payment made (${mode}) (edited)`,
-          debit: amount,
-          refType: 'PAYMENT',
-          refId: payment.id,
-        });
-      }
+      await this.postLedger(tx, payment, 'apply', this.editedDescription(payment.partyType, mode));
 
       await this.audit.log(
         {
@@ -313,6 +328,123 @@ export class PaymentsService {
 
       return payment;
     }, TXN_OPTIONS);
+  }
+
+  /**
+   * Change a payment's amount and/or date inside an existing transaction — used to keep
+   * a bill's own payment in step when the bill is edited. A new amount of zero voids it.
+   */
+  async reviseWithinTx(
+    tx: Prisma.TransactionClient,
+    payment: PaymentRef,
+    changes: { amount?: number; date?: Date },
+    userId: string,
+    reason: string,
+  ) {
+    const amount = round2(changes.amount ?? Number(payment.amount));
+    if (amount <= 0.005) return this.voidWithinTx(tx, payment, userId, reason);
+
+    await this.reverseLedger(tx, payment);
+    const updated = await tx.payment.update({
+      where: { id: payment.id },
+      data: { amount, date: changes.date ?? payment.date },
+    });
+    await this.postLedger(tx, updated, 'apply', this.editedDescription(updated.partyType, updated.mode));
+    await this.audit.log(
+      {
+        entityType: 'PAYMENT',
+        entityId: payment.id,
+        action: AuditAction.UPDATE,
+        summary: `Payment adjusted — ₹${Number(payment.amount)} → ₹${amount} (${reason})`,
+        before: payment,
+        after: updated,
+        userId,
+      },
+      tx,
+    );
+    return updated;
+  }
+
+  /**
+   * Move a payment to a different customer/vendor inside an existing transaction — used
+   * when a bill is reassigned, so the money follows the bill instead of staying on the
+   * old party as a payment they never made.
+   */
+  async moveToPartyWithinTx(
+    tx: Prisma.TransactionClient,
+    payment: PaymentRef,
+    partyId: string,
+    userId: string,
+    reason: string,
+  ) {
+    await this.reverseLedger(tx, payment);
+    const updated = await tx.payment.update({
+      where: { id: payment.id },
+      data: payment.partyType === PartyType.CUSTOMER ? { customerId: partyId } : { vendorId: partyId },
+    });
+    await this.postLedger(
+      tx,
+      updated,
+      'apply',
+      `Payment ${updated.partyType === PartyType.CUSTOMER ? 'received' : 'made'} (${updated.mode})`,
+    );
+    await this.audit.log(
+      {
+        entityType: 'PAYMENT',
+        entityId: payment.id,
+        action: AuditAction.UPDATE,
+        summary: `Payment ₹${Number(payment.amount)} moved to another ${payment.partyType === PartyType.CUSTOMER ? 'customer' : 'vendor'} (${reason})`,
+        before: payment,
+        after: updated,
+        userId,
+      },
+      tx,
+    );
+    return updated;
+  }
+
+  /** Record a payment linked to a specific bill, inside an existing transaction. */
+  async createForBillWithinTx(
+    tx: Prisma.TransactionClient,
+    p: {
+      partyType: PartyType;
+      partyId: string;
+      billId: string;
+      amount: number;
+      mode: PaymentMode;
+      date: Date;
+      description: string;
+    },
+    userId: string,
+  ) {
+    const customer = p.partyType === PartyType.CUSTOMER;
+    const payment = await tx.payment.create({
+      data: {
+        date: p.date,
+        direction: customer ? PaymentDirection.IN : PaymentDirection.OUT,
+        mode: p.mode,
+        amount: round2(p.amount),
+        partyType: p.partyType,
+        customerId: customer ? p.partyId : undefined,
+        vendorId: customer ? undefined : p.partyId,
+        saleId: customer ? p.billId : undefined,
+        purchaseId: customer ? undefined : p.billId,
+        createdById: userId,
+      },
+    });
+    await this.postLedger(tx, payment, 'apply', p.description);
+    await this.audit.log(
+      {
+        entityType: 'PAYMENT',
+        entityId: payment.id,
+        action: AuditAction.CREATE,
+        summary: `${p.description} — ₹${round2(p.amount)} (${p.mode})`,
+        after: payment,
+        userId,
+      },
+      tx,
+    );
+    return payment;
   }
 
   /**
@@ -379,7 +511,7 @@ export class PaymentsService {
    */
   async voidWithinTx(
     tx: Prisma.TransactionClient,
-    payment: { id: string; partyType: PartyType; customerId: string | null; vendorId: string | null; amount: unknown; mode: string },
+    payment: PaymentRef,
     userId: string,
     reason?: string,
   ) {
@@ -406,29 +538,11 @@ export class PaymentsService {
    */
   async unvoidWithinTx(
     tx: Prisma.TransactionClient,
-    payment: { id: string; partyType: PartyType; customerId: string | null; vendorId: string | null; amount: unknown; mode: string },
+    payment: PaymentRef,
     userId: string,
     reason?: string,
   ) {
-    if (payment.partyType === PartyType.CUSTOMER) {
-      await this.ledger.post(tx, {
-        partyType: PartyType.CUSTOMER,
-        customerId: payment.customerId!,
-        description: `Restoration of payment (${payment.mode})`,
-        credit: Number(payment.amount),
-        refType: 'PAYMENT_RESTORE',
-        refId: payment.id,
-      });
-    } else {
-      await this.ledger.post(tx, {
-        partyType: PartyType.VENDOR,
-        vendorId: payment.vendorId!,
-        description: `Restoration of payment (${payment.mode})`,
-        debit: Number(payment.amount),
-        refType: 'PAYMENT_RESTORE',
-        refId: payment.id,
-      });
-    }
+    await this.postLedger(tx, payment, 'restore', `Restoration of payment (${payment.mode})`);
     const updated = await tx.payment.update({ where: { id: payment.id }, data: { voided: false } });
     await this.audit.log(
       {

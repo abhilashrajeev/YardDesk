@@ -386,6 +386,18 @@ export class PurchasesService {
         date,
       });
 
+      // A payment always belongs to the purchase's vendor — if the purchase was moved to
+      // a different vendor, the money paid against it moves too, rather than staying on
+      // the old vendor as a payment we never made them.
+      if (vendorId !== existing.vendorId) {
+        const linked = await tx.payment.findMany({ where: { purchaseId: id, voided: false } });
+        for (const p of linked) {
+          if (p.vendorId !== vendorId) {
+            await this.payments.moveToPartyWithinTx(tx, p, vendorId, userId, `purchase ${label} was moved to this vendor`);
+          }
+        }
+      }
+
       await this.audit.log(
         {
           entityType: 'PURCHASE',
@@ -462,7 +474,8 @@ export class PurchasesService {
           quantity: stockQty,
           refType: 'PURCHASE_RESTORE',
           refId: existing.id,
-          date: new Date(),
+          // The purchase's own date — deleting reversed it on that date, so restoring must too.
+          date: existing.date,
         });
       }
       const label = await this.purchaseLabel(tx, existing, existing.items);
@@ -473,7 +486,7 @@ export class PurchasesService {
         credit: Number(existing.total),
         refType: 'PURCHASE_RESTORE',
         refId: existing.id,
-        date: new Date(),
+        date: existing.date,
       });
 
       const voidedPayments = await tx.payment.findMany({ where: { purchaseId: id, voided: true } });

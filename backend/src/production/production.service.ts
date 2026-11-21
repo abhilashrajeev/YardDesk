@@ -135,10 +135,14 @@ export class ProductionService {
     return production;
   }
 
-  /** Reverses a batch's stock effects: inputs go back IN, the output goes back OUT. */
+  /**
+   * Reverses a batch's stock effects: inputs go back IN, the output goes back OUT.
+   * Dated the batch's own date, so the reversal cancels it out on the day it happened
+   * rather than moving stock between days (which skewed Day Close and P&L).
+   */
   private async reverseEffects(
     tx: Prisma.TransactionClient,
-    existing: { id: string; materialId: string; quantity: Prisma.Decimal | number },
+    existing: { id: string; materialId: string; quantity: Prisma.Decimal | number; date: Date },
     inputs: { materialId: string; quantity: Prisma.Decimal | number }[],
     refType: string,
   ) {
@@ -149,7 +153,7 @@ export class ProductionService {
         quantity: Number(row.quantity),
         refType,
         refId: existing.id,
-        date: new Date(),
+        date: existing.date,
       });
     }
     await this.stock.apply(tx, {
@@ -158,7 +162,7 @@ export class ProductionService {
       quantity: Number(existing.quantity),
       refType,
       refId: existing.id,
-      date: new Date(),
+      date: existing.date,
     });
   }
 

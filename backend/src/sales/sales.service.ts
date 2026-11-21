@@ -21,6 +21,9 @@ import { istDayRange } from '../common/date';
 type SaleStatus = 'PAID' | 'PART_PAID' | 'PENDING' | 'OVERDUE';
 const OVERDUE_AFTER_DAYS = 21;
 
+/** Arbitrary fixed key for the Postgres advisory lock that serialises bill numbering. */
+const BILL_NO_LOCK_KEY = 727001;
+
 function daysSince(date: Date): number {
   return Math.floor((Date.now() - date.getTime()) / 86400000);
 }
@@ -198,6 +201,13 @@ export class SalesService {
    * that's still in use by another bill.
    */
   private async nextBillNo(tx: Prisma.TransactionClient): Promise<string> {
+    // Read-then-increment races when two bills are saved at the same moment: both read
+    // the same highest number and the second save fails on the unique bill number. This
+    // transaction-scoped lock makes the second save wait until the first has committed,
+    // so it reads the new highest number instead. Released automatically at commit.
+    // $executeRaw, not $queryRaw: the lock function returns `void`, which Prisma can't
+    // deserialise as a query result.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${BILL_NO_LOCK_KEY})`;
     const last = await tx.sale.findFirst({
       where: { billNo: { not: null } },
       orderBy: { billNo: 'desc' },
@@ -336,6 +346,70 @@ export class SalesService {
     });
   }
 
+  /**
+   * After a bill is edited, bring the payments linked to it back in line with it:
+   *  - a payment always belongs to the bill's (possibly new) customer, so changing the
+   *    customer moves the money with it;
+   *  - a Cash/UPI/Bank bill is settled in full at the bill, so its payments are topped up
+   *    or trimmed (newest first) to exactly the new total and dated the bill's date.
+   * Credit bills' payments are separate real collections and are otherwise left alone —
+   * if a credit bill is edited below what's been paid, the extra stays as an advance.
+   */
+  private async syncBillPayments(
+    tx: Prisma.TransactionClient,
+    sale: { id: string; billNo: string | null; customerId: string; total: Prisma.Decimal | number; paymentMode: PaymentMode; date: Date },
+    userId: string,
+  ) {
+    const bill = `bill ${sale.billNo ?? sale.id}`;
+    let linked = await tx.payment.findMany({
+      where: { saleId: sale.id, voided: false },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    for (const p of linked) {
+      if (p.customerId !== sale.customerId) {
+        await this.payments.moveToPartyWithinTx(tx, p, sale.customerId, userId, `${bill} was moved to this customer`);
+      }
+    }
+
+    if (sale.paymentMode === PaymentMode.CREDIT) return;
+
+    linked = await tx.payment.findMany({ where: { saleId: sale.id, voided: false }, orderBy: { createdAt: 'asc' } });
+    for (const p of linked) {
+      if (p.date.getTime() !== sale.date.getTime()) {
+        await this.payments.reviseWithinTx(tx, p, { date: sale.date }, userId, `${bill} date changed`);
+      }
+    }
+
+    linked = await tx.payment.findMany({ where: { saleId: sale.id, voided: false }, orderBy: { createdAt: 'asc' } });
+    const paid = round2(linked.reduce((s, p) => s + Number(p.amount), 0));
+    const diff = round2(Number(sale.total) - paid);
+    if (diff > 0.005) {
+      await this.payments.createForBillWithinTx(
+        tx,
+        {
+          partyType: PartyType.CUSTOMER,
+          partyId: sale.customerId,
+          billId: sale.id,
+          amount: diff,
+          mode: sale.paymentMode,
+          date: sale.date,
+          description: `Payment for ${bill}`,
+        },
+        userId,
+      );
+    } else if (diff < -0.005) {
+      let excess = -diff;
+      for (const p of [...linked].reverse()) {
+        if (excess <= 0.005) break;
+        const amount = Number(p.amount);
+        const cut = Math.min(amount, excess);
+        await this.payments.reviseWithinTx(tx, p, { amount: round2(amount - cut) }, userId, `${bill} total reduced`);
+        excess = round2(excess - cut);
+      }
+    }
+  }
+
   /** Edit a sale: reverses its old stock/ledger effect, then reapplies with the new values. */
   async update(id: string, dto: UpdateSaleDto, userId: string) {
     const existing = await this.prisma.sale.findUnique({ where: { id }, include: { items: true } });
@@ -412,6 +486,8 @@ export class SalesService {
         date,
       });
 
+      await this.syncBillPayments(tx, sale, userId);
+
       await this.audit.log(
         {
           entityType: 'SALE',
@@ -485,7 +561,8 @@ export class SalesService {
           quantity: Number(it.quantity),
           refType: 'SALE_RESTORE',
           refId: existing.id,
-          date: new Date(),
+          // The bill's own date — deleting reversed it on that date, so restoring must too.
+          date: existing.date,
         });
       }
       await this.ledger.post(tx, {
@@ -495,7 +572,7 @@ export class SalesService {
         debit: Number(existing.total),
         refType: 'SALE_RESTORE',
         refId: existing.id,
-        date: new Date(),
+        date: existing.date,
       });
 
       const voidedPayments = await tx.payment.findMany({ where: { saleId: id, voided: true } });
