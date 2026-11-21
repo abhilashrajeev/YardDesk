@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, apiError } from '../api/client';
-import { useFetch, money, qty, fmtDate } from '../lib/hooks';
+import { useFetch, money, qty, fmtDate, todayIST } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
 import DetailPanel from './DetailPanel';
 import LineItems from './LineItems';
@@ -337,7 +337,7 @@ function EditSale({
           </div>
           <div>
             <label>Date</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={todayIST()} />
           </div>
         </div>
 

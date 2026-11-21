@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
-import { useFetch, money, fmtDate } from '../lib/hooks';
+import { useFetch, money, fmtDate, todayIST } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
 import PeriodFilter, { defaultPeriodState, periodRange, periodLabel } from '../components/PeriodFilter';
 import CategoryPicker from '../components/CategoryPicker';
@@ -43,7 +43,7 @@ export default function Expenses() {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState(0);
   const [mode, setMode] = useState<PaymentMode>('CASH');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(todayIST());
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -60,7 +60,7 @@ export default function Expenses() {
       setDescription('');
       setAmount(0);
       setMode('CASH');
-      setDate(new Date().toISOString().slice(0, 10));
+      setDate(todayIST());
       refetch();
     } catch (err) {
       setError(apiError(err));
@@ -161,7 +161,7 @@ export default function Expenses() {
             </div>
             <div>
               <label>Date</label>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={todayIST()} />
             </div>
           </div>
           {error && <div className="err">{error}</div>}
@@ -259,7 +259,7 @@ export default function Expenses() {
                 type="date"
                 value={editing.date.slice(0, 10)}
                 onChange={(e) => setEditing({ ...editing, date: e.target.value })}
-                max={new Date().toISOString().slice(0, 10)}
+                max={todayIST()}
               />
             </div>
           </div>

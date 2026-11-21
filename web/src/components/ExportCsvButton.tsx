@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { todayIST } from '../lib/hooks';
 
 /**
  * "Export CSV" button that first asks for a From/To date range in a centered
@@ -21,7 +22,7 @@ export default function ExportCsvButton({
   defaultTo?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIST();
   const monthStart = `${today.slice(0, 7)}-01`;
   const [from, setFrom] = useState(defaultFrom || monthStart);
   const [to, setTo] = useState(defaultTo || today);

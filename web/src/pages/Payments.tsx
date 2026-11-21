@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { api, apiError } from '../api/client';
-import { useFetch, money, fmtDate, newClientUuid } from '../lib/hooks';
+import { useFetch, money, fmtDate, newClientUuid, todayIST } from '../lib/hooks';
 import { downloadCsv } from '../lib/csv';
 import { useAuth } from '../auth/AuthContext';
 import ExportCsvButton from '../components/ExportCsvButton';
@@ -26,7 +26,7 @@ export default function Payments() {
   const [mode, setMode] = useState<PaymentMode>('CASH');
   const [amount, setAmount] = useState(0);
   const [reference, setReference] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(todayIST());
   // Default: FIFO-apply the payment across the party's oldest open bills (may create
   // several linked payment rows). Off: one lump payment against the total outstanding,
   // not tied to any specific bill — for "just record what they paid" without allocating it.
@@ -76,7 +76,7 @@ export default function Payments() {
       setMode('CASH');
       setAmount(0);
       setReference('');
-      setDate(new Date().toISOString().slice(0, 10));
+      setDate(todayIST());
       setAutoApply(true);
       refetch();
     } catch (err) {
@@ -187,7 +187,7 @@ export default function Payments() {
             </div>
             <div>
               <label>Date</label>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={todayIST()} />
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, paddingBottom: 9 }}>
               <input type="checkbox" style={{ width: 'auto' }} checked={autoApply} onChange={(e) => setAutoApply(e.target.checked)} />
@@ -293,7 +293,7 @@ export default function Payments() {
                 type="date"
                 value={editing.date.slice(0, 10)}
                 onChange={(e) => setEditing({ ...editing, date: e.target.value })}
-                max={new Date().toISOString().slice(0, 10)}
+                max={todayIST()}
               />
             </div>
           </div>

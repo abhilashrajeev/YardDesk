@@ -41,6 +41,14 @@ export const newClientUuid = (): string =>
     ? crypto.randomUUID()
     : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 
+/**
+ * Today's business date 'YYYY-MM-DD' in IST, for form defaults and date-picker limits.
+ * Don't use `new Date().toISOString().slice(0, 10)` for this: that's the UTC date, which
+ * is still yesterday between 00:00 and 05:30 IST — forms then default to yesterday and
+ * their date pickers won't even allow today.
+ */
+export const todayIST = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+
 /** Rounds to 2 decimals — avoids float artifacts like 100 * 2.2 = 220.00000000000003. Matches backend's round2. */
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 

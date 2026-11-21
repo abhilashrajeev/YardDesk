@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, apiError } from '../api/client';
-import { useFetch, money, qty, fmtDate } from '../lib/hooks';
+import { useFetch, money, qty, fmtDate, todayIST } from '../lib/hooks';
 import { useAuth } from '../auth/AuthContext';
 import type { Material, Production } from '../types';
 
@@ -18,7 +18,7 @@ export default function Mixing() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [materialId, setMaterialId] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(todayIST());
   const [quantity, setQuantity] = useState(0);
   const [costOverride, setCostOverride] = useState<number | ''>('');
   const [inputs, setInputs] = useState<InputLine[]>([{ materialId: '', quantity: 0 }]);
@@ -63,7 +63,7 @@ export default function Mixing() {
   function resetForm() {
     setEditingId(null);
     setMaterialId('');
-    setDate(new Date().toISOString().slice(0, 10));
+    setDate(todayIST());
     setQuantity(0);
     setCostOverride('');
     setInputs([{ materialId: '', quantity: 0 }]);
@@ -187,7 +187,7 @@ export default function Mixing() {
               </div>
               <div>
                 <label>Date</label>
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={todayIST()} />
               </div>
             </div>
 

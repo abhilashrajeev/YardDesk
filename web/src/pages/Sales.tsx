@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, apiError } from '../api/client';
-import { useFetch, money, fmtDate, statusPillClass, newClientUuid } from '../lib/hooks';
+import { useFetch, money, fmtDate, statusPillClass, newClientUuid, todayIST } from '../lib/hooks';
 import { downloadCsv } from '../lib/csv';
 import { useAuth } from '../auth/AuthContext';
 import LineItems from '../components/LineItems';
@@ -227,7 +227,7 @@ function NewSale({
   onDone: () => void;
 }) {
   const [customerId, setCustomerId] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(todayIST());
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [customerVehicles, setCustomerVehicles] = useState<CustomerVehicle[]>([]);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('CREDIT');
@@ -359,7 +359,7 @@ function NewSale({
           </div>
           <div>
             <label>Date</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} max={todayIST()} />
           </div>
         </div>
 
